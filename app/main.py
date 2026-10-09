@@ -4,6 +4,12 @@ import secrets
 
 from fastapi import FastAPI, Header, HTTPException, Query
 
+from app.garmin.archive import (
+    ArchiveError,
+    DatabaseNotConfigured,
+    EncryptionKeyMissing,
+    archive_latest,
+)
 from app.garmin.client import (
     GarminConnectAuthenticationError,
     GarminConnectConnectionError,
@@ -11,6 +17,7 @@ from app.garmin.client import (
     GarminNotConfigured,
     fetch_recent_activities,
 )
+from app.storage.blob import BlobNotConfigured, BlobUploadError
 
 logger = logging.getLogger(__name__)
 
@@ -44,6 +51,26 @@ def activities(
         logger.exception("Activity fetch failed")
         raise HTTPException(status_code=502, detail="Garmin request failed")
     return {"activities": items}
+
+
+@app.post("/archive")
+def archive(authorization: str | None = Header(default=None)) -> dict:
+    _require_service_secret(authorization)
+    try:
+        return archive_latest()
+    except (GarminNotConfigured, DatabaseNotConfigured, EncryptionKeyMissing, BlobNotConfigured):
+        raise HTTPException(status_code=503, detail="Archive storage is not configured")
+    except GarminConnectAuthenticationError:
+        logger.warning("Garmin authentication failed")
+        raise HTTPException(status_code=401, detail="Garmin authentication failed")
+    except GarminConnectTooManyRequestsError:
+        raise HTTPException(status_code=429, detail="Garmin rate limit")
+    except (GarminConnectConnectionError, ArchiveError, BlobUploadError):
+        logger.warning("Archive failed")
+        raise HTTPException(status_code=502, detail="Archive failed")
+    except Exception as error:
+        logger.warning("Archive failed: %s", type(error).__name__)
+        raise HTTPException(status_code=502, detail="Archive failed")
 
 
 def _require_service_secret(authorization: str | None) -> None:
