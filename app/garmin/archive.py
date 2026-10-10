@@ -14,6 +14,8 @@ from app.storage.db import (
     DatabaseNotConfigured,
     connect,
     ensure_schema,
+    find_activity_raw_object,
+    find_day_raw_object,
     find_raw_object,
     insert_raw_object,
     load_token,
@@ -24,6 +26,10 @@ from app.storage.blob import put_private
 
 class ArchiveError(Exception):
     """Raised when the latest activity cannot be archived."""
+
+
+# Newest page Garmin returns in one activities request. The library default is 20.
+_RECENT_ACTIVITY_LIMIT = 20
 
 
 def archive_latest() -> dict[str, Any]:
@@ -39,56 +45,93 @@ def archive_latest() -> dict[str, Any]:
 
     with connect() as connection:
         save_token(connection, client.client.dumps(), client.profile_id, key_material)
+        activities = client.get_activities(0, _RECENT_ACTIVITY_LIMIT)
+        if not isinstance(activities, list):
+            raise ArchiveError("No recent activity")
+        target = _select_target(connection, activities)
 
-    activities = client.get_activities(0, 1)
-    if not isinstance(activities, list) or not activities or not isinstance(activities[0], dict):
+    if target is None:
         raise ArchiveError("No recent activity")
-    activity = activities[0]
-    activity_id = _activity_id(activity)
-    day = _activity_day(activity)
+
     user_id = client.profile_id if isinstance(client.profile_id, int) else "unknown"
-
-    zip_bytes = client.download_activity(
-        str(activity_id),
-        dl_fmt=Garmin.ActivityDownloadFormat.ORIGINAL,
-    )
-    if not isinstance(zip_bytes, (bytes, bytearray)):
-        raise ArchiveError("Activity download was not bytes")
-
-    day_body = json.dumps(
-        {
-            "sleep": client.get_sleep_data(day),
-            "heart_rate": client.get_heart_rates(day),
-        },
-        separators=(",", ":"),
-        ensure_ascii=False,
-    ).encode()
-
-    with connect() as connection:
-        activity_record = _store_bytes(
-            connection,
-            body=bytes(zip_bytes),
-            kind="activity",
-            source_format="zip",
-            pathname=f"garmin/{user_id}/activity/{activity_id}",
-            extension="zip",
-            content_type="application/zip",
-            garmin_activity_id=activity_id,
-            day=None,
+    activity_record = target["activity_record"]
+    day_record = target["day_record"]
+    if activity_record is None:
+        zip_bytes = client.download_activity(
+            str(target["activity_id"]),
+            dl_fmt=Garmin.ActivityDownloadFormat.ORIGINAL,
         )
-        day_record = _store_bytes(
-            connection,
-            body=day_body,
-            kind="day",
-            source_format="json",
-            pathname=f"garmin/{user_id}/day/{day}",
-            extension="json",
-            content_type="application/json",
-            garmin_activity_id=None,
-            day=day,
-        )
+        if not isinstance(zip_bytes, (bytes, bytearray)):
+            raise ArchiveError("Activity download was not bytes")
+        with connect() as connection:
+            activity_record = _store_bytes(
+                connection,
+                body=bytes(zip_bytes),
+                kind="activity",
+                source_format="zip",
+                pathname=f"garmin/{user_id}/activity/{target['activity_id']}",
+                extension="zip",
+                content_type="application/zip",
+                garmin_activity_id=target["activity_id"],
+                day=None,
+            )
+    if day_record is None:
+        day_body = json.dumps(
+            {
+                "sleep": client.get_sleep_data(target["day"]),
+                "heart_rate": client.get_heart_rates(target["day"]),
+            },
+            separators=(",", ":"),
+            ensure_ascii=False,
+        ).encode()
+        with connect() as connection:
+            day_record = _store_bytes(
+                connection,
+                body=day_body,
+                kind="day",
+                source_format="json",
+                pathname=f"garmin/{user_id}/day/{target['day']}",
+                extension="json",
+                content_type="application/json",
+                garmin_activity_id=None,
+                day=target["day"],
+            )
 
     return {"activity": activity_record, "day": day_record}
+
+
+def _select_target(connection: Any, activities: list[Any]) -> dict[str, Any] | None:
+    fallback = None
+    for activity in activities:
+        if not isinstance(activity, dict):
+            continue
+        try:
+            activity_id = _activity_id(activity)
+            day = _activity_day(activity)
+        except ArchiveError:
+            continue
+        existing_activity = find_activity_raw_object(connection, activity_id)
+        existing_day = find_day_raw_object(connection, day)
+        target = {
+            "activity_id": activity_id,
+            "day": day,
+            "activity_record": _already_stored(existing_activity),
+            "day_record": _already_stored(existing_day),
+        }
+        if existing_activity is not None and existing_day is not None:
+            if fallback is None:
+                fallback = target
+            continue
+        return target
+    return fallback
+
+
+def _already_stored(record: dict[str, Any] | None) -> dict[str, Any] | None:
+    if record is None:
+        return None
+    stored = dict(record)
+    stored["stored"] = False
+    return stored
 
 
 def _login(saved_token: str | None) -> Garmin:

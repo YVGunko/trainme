@@ -113,6 +113,40 @@ def save_token(
     connection.commit()
 
 
+def find_activity_raw_object(
+    connection: psycopg.Connection, garmin_activity_id: int
+) -> dict[str, Any] | None:
+    row = connection.execute(
+        """
+        SELECT kind, garmin_activity_id, day::text, source_format, source_path, source_sha256, byte_size
+        FROM raw_object
+        WHERE kind = 'activity' AND garmin_activity_id = %s
+        ORDER BY created_at ASC, id ASC
+        LIMIT 1
+        """,
+        (garmin_activity_id,),
+    ).fetchone()
+    if row is None:
+        return None
+    return _raw_row(row)
+
+
+def find_day_raw_object(connection: psycopg.Connection, day: str) -> dict[str, Any] | None:
+    row = connection.execute(
+        """
+        SELECT kind, garmin_activity_id, day::text, source_format, source_path, source_sha256, byte_size
+        FROM raw_object
+        WHERE kind = 'day' AND day = %s
+        ORDER BY created_at ASC, id ASC
+        LIMIT 1
+        """,
+        (day,),
+    ).fetchone()
+    if row is None:
+        return None
+    return _raw_row(row)
+
+
 def find_raw_object(connection: psycopg.Connection, sha256: str) -> dict[str, Any] | None:
     row = connection.execute(
         """
