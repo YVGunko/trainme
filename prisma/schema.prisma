@@ -7,6 +7,16 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+/// One personal login. The site creates this row from Vercel env vars.
+model users {
+  id            String   @id @default(cuid())
+  username      String   @unique
+  password_hash String
+  is_active     Boolean  @default(true)
+  created_at    DateTime @default(now()) @db.Timestamptz(6)
+  updated_at    DateTime @updatedAt @db.Timestamptz(6)
+}
+
 /// One Garmin login. The live table only allows id = 1.
 model garmin_account {
   id                  Int      @id @db.SmallInt
