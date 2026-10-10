@@ -8,10 +8,30 @@ export function activityWhen(startAt, offsetMin) {
   return `${iso.slice(0, 10)} ${iso.slice(11, 16)}`;
 }
 
+export function sportLabel(sport, subSport) {
+  const sub = subSport && subSport !== 'generic' ? subSport : '';
+  return [sport, sub].filter(Boolean).join(' / ');
+}
+
+export function fallbackTitle(row) {
+  const garmin = typeof row.garmin_name === 'string' ? row.garmin_name.trim() : '';
+  if (garmin) return garmin;
+  return sportLabel(row.sport, row.sub_sport);
+}
+
+function cleanText(value) {
+  return typeof value === 'string' ? value.trim() : '';
+}
+
+function numberOrNull(value) {
+  if (value == null || value === '') return null;
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+}
+
 export function formatDuration(seconds) {
-  if (seconds == null || seconds === '') return '—';
-  const value = Number(seconds);
-  if (!Number.isFinite(value)) return '—';
+  const value = numberOrNull(seconds);
+  if (value == null) return '—';
   const total = Math.max(0, Math.round(value));
   const hours = Math.floor(total / 3600);
   const minutes = Math.floor((total % 3600) / 60);
@@ -23,21 +43,31 @@ export function formatDuration(seconds) {
 }
 
 export function formatDistance(meters) {
-  if (meters == null || meters === '') return '—';
-  const value = Number(meters);
-  if (!Number.isFinite(value)) return '—';
+  const value = numberOrNull(meters);
+  if (value == null) return '—';
   return `${(value / 1000).toFixed(2)} км`;
 }
 
 export function formatActivity(row) {
-  const subSport = row.sub_sport && row.sub_sport !== 'generic' ? row.sub_sport : '';
-  const sport = [row.sport, subSport].filter(Boolean).join(' / ') || '—';
+  const sport = sportLabel(row.sport, row.sub_sport) || '—';
+  const fallback = fallbackTitle(row);
+  const custom = cleanText(row.title);
+  const description = cleanText(row.description);
+  const local = cleanText(row.start_local);
+  const when = local ? local.slice(0, 16) : activityWhen(row.start_at, row.timezone_offset_min);
   return {
     garminActivityId: String(row.garmin_activity_id),
-    when: activityWhen(row.start_at, row.timezone_offset_min) || '—',
+    when: when || '—',
+    whenSort: when || null,
+    title: custom || fallback || '—',
+    fallbackTitle: fallback || '',
+    customTitle: custom,
+    description,
     sport,
     duration: formatDuration(row.duration_sec),
+    durationSec: numberOrNull(row.duration_sec),
     distance: formatDistance(row.distance_m),
+    distanceM: numberOrNull(row.distance_m),
     parsed: Boolean(row.parsed),
   };
 }

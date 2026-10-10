@@ -1,4 +1,4 @@
-import { verifySessionToken } from '@/lib/auth';
+import { getSessionTokenFromRequest, verifySessionToken } from '@/lib/auth';
 import { getPrisma } from '@/server/db';
 
 export async function userFromToken(token) {
@@ -11,4 +11,14 @@ export async function userFromToken(token) {
   });
   if (!user?.is_active) return null;
   return { id: user.id, username: user.username };
+}
+
+export async function requireUser(request) {
+  const user = await userFromToken(getSessionTokenFromRequest(request));
+  if (!user) {
+    const error = new Error('unauthorized');
+    error.status = 401;
+    throw error;
+  }
+  return user;
 }

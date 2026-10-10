@@ -6,7 +6,15 @@ from unittest.mock import MagicMock, patch
 
 from fastapi.testclient import TestClient
 
-from app.garmin.archive import _activity_day, _store_bytes, archive_latest
+from app.storage.db import upsert_activity_meta
+from app.garmin.archive import (
+    PeriodError,
+    _activity_day,
+    _store_bytes,
+    archive_latest,
+    archive_period,
+    parse_period,
+)
 from app.main import app
 from app.storage.blob import put_private
 from app.storage.crypto import decrypt, encrypt
@@ -140,6 +148,66 @@ class ArchiveSelectionTest(unittest.TestCase):
         client.get_heart_rates.assert_not_called()
         self.assertTrue(result["activity"]["stored"])
         self.assertFalse(result["day"]["stored"])
+
+
+class ActivityMetaTest(unittest.TestCase):
+    def test_garmin_update_does_not_replace_user_text(self) -> None:
+        connection = MagicMock()
+        upsert_activity_meta(connection, 9, "Morning", "2026-10-09 07:21:13")
+        sql = connection.execute.call_args.args[0]
+        self.assertIn("garmin_name = COALESCE", sql)
+        self.assertNotIn("title =", sql)
+        self.assertNotIn("description =", sql)
+
+
+class PeriodTest(unittest.TestCase):
+    def test_period_rejects_more_than_14_days(self) -> None:
+        with self.assertRaises(PeriodError):
+            parse_period("2026-10-01", "2026-10-15")
+
+    def test_period_keeps_stored_files_and_records_the_garmin_name(self) -> None:
+        client = _garmin_client([])
+        client.get_activities_by_date.return_value = [
+            {
+                "activityId": 9,
+                "activityName": "Morning",
+                "startTimeLocal": "2026-10-09 07:21:13",
+            },
+            {
+                "activityId": 8,
+                "activityName": "Bike",
+                "startTimeLocal": "2026-10-07 18:47:45",
+            },
+        ]
+        remembered: list[tuple] = []
+
+        def remember(activity_id: int, name: str | None, start: str | None) -> None:
+            remembered.append((activity_id, name, start))
+
+        with _archive_patches(client, activity_ids={9}, days={"2026-10-09"}):
+            with patch("app.garmin.archive._remember_activity", side_effect=remember):
+                result = archive_period("2026-10-07", "2026-10-09")
+
+        client.get_activities_by_date.assert_called_once_with("2026-10-07", "2026-10-09")
+        client.download_activity.assert_called_once()
+        self.assertEqual(client.download_activity.call_args.args[0], "8")
+        self.assertEqual(client.get_sleep_data.call_count, 2)
+        self.assertEqual(result["activity_count"], 2)
+        self.assertEqual(result["downloaded_activity_count"], 1)
+        self.assertEqual(result["day_count"], 3)
+        self.assertEqual(result["downloaded_day_count"], 2)
+        self.assertIn((9, "Morning", "2026-10-09 07:21:13"), remembered)
+        self.assertIn((8, "Bike", "2026-10-07 18:47:45"), remembered)
+
+    def test_period_route_rejects_a_long_range(self) -> None:
+        client = TestClient(app)
+        with patch.dict(os.environ, {"SERVICE_SECRET": "expected"}, clear=True):
+            response = client.post(
+                "/archive/period",
+                headers={"Authorization": "Bearer expected"},
+                json={"start": "2026-10-01", "end": "2026-10-20"},
+            )
+        self.assertEqual(response.status_code, 400)
 
 
 def _garmin_client(activities: list[dict]) -> MagicMock:

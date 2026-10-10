@@ -20,7 +20,7 @@ body {
 }
 
 main {
-  width: min(960px, calc(100% - 32px));
+  width: min(1180px, calc(100% - 32px));
   margin: 32px auto 48px;
 }
 
@@ -128,7 +128,42 @@ td {
 th {
   color: var(--muted);
   font-size: 0.82rem;
-  font-weight: 650;
+  font-weight: 600;
+}
+
+.sort-button {
+  border: 0;
+  border-radius: 0;
+  padding: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.toolbar,
+.search {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: flex-end;
+  margin-bottom: 12px;
+}
+
+.search {
+  display: grid;
+  max-width: 420px;
+}
+
+td input {
+  min-width: 140px;
+}
+
+td:nth-child(2),
+td:nth-child(3) {
+  white-space: normal;
+  min-width: 180px;
 }
 
 tbody tr:last-child td {

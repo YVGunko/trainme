@@ -1,4 +1,5 @@
 import { cookies } from 'next/headers';
+import { ActivityScreen } from '@/components/activity-screen';
 import { LoginForm } from '@/components/login-form';
 import { userFromToken } from '@/server/session';
 import { listActivities } from '@/server/activities';
@@ -50,34 +51,7 @@ export default async function HomePage() {
         </form>
       </header>
       {listError ? <p className="error">{listError}</p> : null}
-      {activities.length === 0 && !listError ? <p>Пока нет загруженных тренировок.</p> : null}
-      {activities.length > 0 ? (
-        <div className="table-wrap">
-          <table>
-            <caption>Дата есть только у уже разобранной тренировки. Название Garmin в базу не записывается.</caption>
-            <thead>
-              <tr>
-                <th>Дата</th>
-                <th>Тип</th>
-                <th>Длительность</th>
-                <th>Дистанция</th>
-                <th>Разбор</th>
-              </tr>
-            </thead>
-            <tbody>
-              {activities.map((activity) => (
-                <tr key={activity.garminActivityId}>
-                  <td>{activity.when}</td>
-                  <td>{activity.sport}</td>
-                  <td>{activity.duration}</td>
-                  <td>{activity.distance}</td>
-                  <td>{activity.parsed ? 'да' : 'нет'}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      ) : null}
+      <ActivityScreen activities={activities} />
     </main>
   );
 }

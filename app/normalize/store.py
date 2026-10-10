@@ -87,6 +87,32 @@ _CYCLING_COLUMNS = (
 )
 
 
+def latest_activity_raw_object(
+    connection: psycopg.Connection, garmin_activity_id: int
+) -> dict[str, Any] | None:
+    row = connection.execute(
+        """
+        SELECT kind, garmin_activity_id, day::text, source_format, source_path, source_sha256, byte_size
+        FROM raw_object
+        WHERE kind = 'activity' AND source_format = 'zip' AND garmin_activity_id = %s
+        ORDER BY created_at DESC, id DESC
+        LIMIT 1
+        """,
+        (garmin_activity_id,),
+    ).fetchone()
+    if row is None:
+        return None
+    return {
+        "kind": row[0],
+        "garmin_activity_id": row[1],
+        "day": row[2],
+        "source_format": row[3],
+        "source_path": row[4],
+        "source_sha256": row[5],
+        "byte_size": row[6],
+    }
+
+
 def latest_raw_object(
     connection: psycopg.Connection, kind: str, source_format: str
 ) -> dict[str, Any] | None:
@@ -119,9 +145,9 @@ def write_normalized(
     garmin_activity_id: int,
     parsed: dict[str, Any],
     activity_source: dict[str, Any],
-    day: date,
+    day: date | None,
     day_fields: dict[str, float],
-    day_source: dict[str, Any],
+    day_source: dict[str, Any] | None,
 ) -> dict[str, Any]:
     activity_id = _upsert_activity(connection, garmin_activity_id, parsed, activity_source)
     sample_count = _replace_samples(connection, activity_id, parsed["samples"])
@@ -138,7 +164,9 @@ def write_normalized(
     else:
         _upsert_keyed(connection, "cycling_activity", activity_id, _CYCLING_COLUMNS, cycling)
     set_count = _replace_sets(connection, activity_id, sets)
-    written_fields = _upsert_day(connection, day, day_fields, day_source)
+    written_fields: list[str] = []
+    if day is not None and day_source is not None:
+        written_fields = _upsert_day(connection, day, day_fields, day_source)
     connection.commit()
     session_fields = sorted(
         {row["name"] for row in parsed["fields"] if row["message"] == "session"}
@@ -156,7 +184,9 @@ def write_normalized(
             "strength_set_count": set_count,
             "source_sha256": activity_source["source_sha256"],
         },
-        "day": {"date": day.isoformat(), "fields": written_fields},
+        "day": None
+        if day is None
+        else {"date": day.isoformat(), "fields": written_fields},
     }
 
 

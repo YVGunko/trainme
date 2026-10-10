@@ -1,3 +1,4 @@
+import hashlib
 import io
 import os
 import struct
@@ -13,6 +14,7 @@ from fitdecode.utils import compute_crc
 
 from app.main import app
 from app.normalize.day import day_metrics
+from app.normalize.load import normalize_activity
 from app.normalize.fit import NormalizeError, parse_activity_zip, parse_fit
 from app.storage.blob import get_private
 from app.storage.db import _split_sql
@@ -211,6 +213,68 @@ class NormalizeRouteTest(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["fit_file"], "activity.fit")
         self.assertNotIn("di_token", response.text)
+
+    def test_normalize_for_one_activity_uses_that_id(self) -> None:
+        client = TestClient(app)
+        with patch.dict(os.environ, {"SERVICE_SECRET": "expected"}, clear=True):
+            with patch("app.main.normalize_activity", return_value={"fit_file": "a.fit", "day": None}) as called:
+                response = client.post(
+                    "/normalize",
+                    headers={"Authorization": "Bearer expected"},
+                    json={"garmin_activity_id": "8"},
+                )
+        self.assertEqual(response.status_code, 200)
+        called.assert_called_once_with(8)
+
+
+class NormalizeActivityTest(unittest.TestCase):
+    def test_requested_zip_is_parsed_without_a_day_file(self) -> None:
+        body = b"zip-bytes"
+        raw = {
+            "kind": "activity",
+            "garmin_activity_id": 8,
+            "day": None,
+            "source_format": "zip",
+            "source_path": "garmin/1/activity/8/abc.zip",
+            "source_sha256": hashlib.sha256(body).hexdigest(),
+            "byte_size": len(body),
+        }
+        parsed = {
+            "sport": "cycling",
+            "sub_sport": "indoor_cycling",
+            "start_at": None,
+            "timezone_offset_min": None,
+            "samples": [],
+            "fields": [],
+            "running": None,
+            "cycling": {},
+            "sets": [],
+        }
+        connection = MagicMock()
+        connection.__enter__.return_value = connection
+        connection.__exit__.return_value = False
+        with patch("app.normalize.load.connect", return_value=connection):
+            with patch("app.normalize.load.ensure_schema"):
+                with patch("app.normalize.load.latest_activity_raw_object", return_value=raw):
+                    with patch(
+                        "app.normalize.load.load_activity_meta",
+                        return_value={"start_local": "2026-10-07 18:47:45"},
+                    ):
+                        with patch("app.normalize.load.get_private", return_value=body) as download:
+                            with patch(
+                                "app.normalize.load.parse_activity_zip",
+                                return_value=("8.fit", parsed),
+                            ):
+                                with patch("app.normalize.load.find_day_raw_object", return_value=None):
+                                    with patch(
+                                        "app.normalize.load.write_normalized",
+                                        return_value={"activity": {"garmin_activity_id": 8}, "day": None},
+                                    ) as write:
+                                        result = normalize_activity(8)
+        download.assert_called_once_with("garmin/1/activity/8/abc.zip")
+        self.assertEqual(write.call_args.kwargs["garmin_activity_id"], 8)
+        self.assertIsNone(write.call_args.kwargs["day"])
+        self.assertEqual(result["fit_file"], "8.fit")
 
 
 class MigrationSqlTest(unittest.TestCase):

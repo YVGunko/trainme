@@ -7,6 +7,17 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+/// Garmin list fields and the user's own title and description.
+/// Re-parsing a FIT file does not change this row.
+model activity_meta {
+  garmin_activity_id BigInt    @id
+  garmin_name        String?
+  title              String?
+  description        String?
+  start_local        DateTime? @db.Timestamp(6)
+  updated_at         DateTime  @default(now()) @updatedAt @db.Timestamptz(6)
+}
+
 /// One personal login. The site creates this row from Vercel env vars.
 model users {
   id            String   @id @default(cuid())

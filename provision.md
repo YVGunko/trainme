@@ -377,6 +377,8 @@ activity
 
 garmin_activity_id is unique. id stays the application key.
 
+activity_meta is one row per Garmin activity id. It keeps the Garmin activity name and the local start time from the activity list, plus the user's own title and description. A repeated FIT parse does not overwrite those fields. The list date is the workout's local start, not the time the file was parsed.
+
 Do not assume every field exists for every sport.
 
 Sport aggregates are one-to-one with activity. A row exists only for that sport.

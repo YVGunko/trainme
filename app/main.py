@@ -2,13 +2,15 @@ import logging
 import os
 import secrets
 
-from fastapi import FastAPI, Header, HTTPException, Query
+from fastapi import Body, FastAPI, Header, HTTPException, Query
 
 from app.garmin.archive import (
     ArchiveError,
     DatabaseNotConfigured,
     EncryptionKeyMissing,
+    PeriodError,
     archive_latest,
+    archive_period,
 )
 from app.garmin.client import (
     GarminConnectAuthenticationError,
@@ -18,7 +20,7 @@ from app.garmin.client import (
     fetch_recent_activities,
 )
 from app.normalize.fit import NormalizeError
-from app.normalize.load import normalize_latest
+from app.normalize.load import normalize_activity, normalize_latest
 from app.storage.blob import BlobNotConfigured, BlobReadError, BlobUploadError
 
 logger = logging.getLogger(__name__)
@@ -75,11 +77,52 @@ def archive(authorization: str | None = Header(default=None)) -> dict:
         raise HTTPException(status_code=502, detail="Archive failed")
 
 
+@app.post("/archive/period")
+def archive_for_period(
+    body: dict | None = Body(default=None),
+    authorization: str | None = Header(default=None),
+) -> dict:
+    _require_service_secret(authorization)
+    payload = body if isinstance(body, dict) else {}
+    start = payload.get("start")
+    end = payload.get("end")
+    if not isinstance(start, str) or not isinstance(end, str):
+        raise HTTPException(status_code=400, detail="Period dates must be YYYY-MM-DD")
+    try:
+        return archive_period(start, end)
+    except PeriodError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+    except (GarminNotConfigured, DatabaseNotConfigured, EncryptionKeyMissing, BlobNotConfigured):
+        raise HTTPException(status_code=503, detail="Archive storage is not configured")
+    except GarminConnectAuthenticationError:
+        logger.warning("Garmin authentication failed")
+        raise HTTPException(status_code=401, detail="Garmin authentication failed")
+    except GarminConnectTooManyRequestsError:
+        raise HTTPException(status_code=429, detail="Garmin rate limit")
+    except (GarminConnectConnectionError, ArchiveError, BlobUploadError):
+        logger.warning("Archive failed")
+        raise HTTPException(status_code=502, detail="Archive failed")
+    except Exception as error:
+        logger.warning("Archive failed: %s", type(error).__name__)
+        raise HTTPException(status_code=502, detail="Archive failed")
+
+
 @app.post("/normalize")
-def normalize(authorization: str | None = Header(default=None)) -> dict:
+def normalize(
+    body: dict | None = Body(default=None),
+    authorization: str | None = Header(default=None),
+) -> dict:
     _require_service_secret(authorization)
     try:
-        return normalize_latest()
+        payload = body if isinstance(body, dict) else {}
+        activity_id = payload.get("garmin_activity_id")
+        if activity_id is None:
+            return normalize_latest()
+        if isinstance(activity_id, str) and activity_id.isdigit():
+            activity_id = int(activity_id)
+        if isinstance(activity_id, bool) or not isinstance(activity_id, int):
+            raise HTTPException(status_code=400, detail="garmin_activity_id is required")
+        return normalize_activity(activity_id)
     except (DatabaseNotConfigured, BlobNotConfigured):
         raise HTTPException(status_code=503, detail="Archive storage is not configured")
     except NormalizeError as error:

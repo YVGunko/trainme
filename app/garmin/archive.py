@@ -1,6 +1,7 @@
 import hashlib
 import json
 import os
+from datetime import date, timedelta
 from typing import Any
 
 from garminconnect import (
@@ -20,6 +21,7 @@ from app.storage.db import (
     insert_raw_object,
     load_token,
     save_token,
+    upsert_activity_meta,
 )
 from app.storage.blob import put_private
 
@@ -28,8 +30,13 @@ class ArchiveError(Exception):
     """Raised when the latest activity cannot be archived."""
 
 
+class PeriodError(ArchiveError):
+    """Raised when a requested archive period is not acceptable."""
+
+
 # Newest page Garmin returns in one activities request. The library default is 20.
 _RECENT_ACTIVITY_LIMIT = 20
+_MAX_PERIOD_DAYS = 14
 
 
 def archive_latest() -> dict[str, Any]:
@@ -100,6 +107,123 @@ def archive_latest() -> dict[str, Any]:
     return {"activity": activity_record, "day": day_record}
 
 
+def archive_period(start: str, end: str) -> dict[str, Any]:
+    start_date, end_date = parse_period(start, end)
+    key_material = os.environ.get("TOKEN_ENCRYPTION_KEY", "")
+    if not key_material:
+        raise EncryptionKeyMissing
+
+    with connect() as connection:
+        ensure_schema(connection)
+        saved_token = load_token(connection, key_material)
+
+    client = _login(saved_token)
+    with connect() as connection:
+        save_token(connection, client.client.dumps(), client.profile_id, key_material)
+
+    activities = client.get_activities_by_date(start_date.isoformat(), end_date.isoformat())
+    if not isinstance(activities, list):
+        raise ArchiveError("Activity list was not a list")
+
+    user_id = client.profile_id if isinstance(client.profile_id, int) else "unknown"
+    archived: list[dict[str, Any]] = []
+    downloaded_activities = 0
+    for activity in activities:
+        if not isinstance(activity, dict):
+            continue
+        try:
+            activity_id = _activity_id(activity)
+            day = _activity_day(activity)
+        except ArchiveError:
+            continue
+        if day < start_date.isoformat() or day > end_date.isoformat():
+            continue
+        _remember_activity(activity_id, _activity_name(activity), _activity_start(activity))
+        with connect() as connection:
+            existing = find_activity_raw_object(connection, activity_id)
+        stored = False
+        if existing is None:
+            zip_bytes = client.download_activity(
+                str(activity_id),
+                dl_fmt=Garmin.ActivityDownloadFormat.ORIGINAL,
+            )
+            if not isinstance(zip_bytes, (bytes, bytearray)):
+                raise ArchiveError("Activity download was not bytes")
+            with connect() as connection:
+                _store_bytes(
+                    connection,
+                    body=bytes(zip_bytes),
+                    kind="activity",
+                    source_format="zip",
+                    pathname=f"garmin/{user_id}/activity/{activity_id}",
+                    extension="zip",
+                    content_type="application/zip",
+                    garmin_activity_id=activity_id,
+                    day=None,
+                )
+            stored = True
+            downloaded_activities += 1
+        archived.append(
+            {
+                "garmin_activity_id": activity_id,
+                "day": day,
+                "stored": stored,
+            }
+        )
+
+    downloaded_days = 0
+    current = start_date
+    while current <= end_date:
+        day = current.isoformat()
+        with connect() as connection:
+            existing_day = find_day_raw_object(connection, day)
+        if existing_day is None:
+            day_body = json.dumps(
+                {
+                    "sleep": client.get_sleep_data(day),
+                    "heart_rate": client.get_heart_rates(day),
+                },
+                separators=(",", ":"),
+                ensure_ascii=False,
+            ).encode()
+            with connect() as connection:
+                _store_bytes(
+                    connection,
+                    body=day_body,
+                    kind="day",
+                    source_format="json",
+                    pathname=f"garmin/{user_id}/day/{day}",
+                    extension="json",
+                    content_type="application/json",
+                    garmin_activity_id=None,
+                    day=day,
+                )
+            downloaded_days += 1
+        current += timedelta(days=1)
+
+    return {
+        "start": start_date.isoformat(),
+        "end": end_date.isoformat(),
+        "activity_count": len(archived),
+        "downloaded_activity_count": downloaded_activities,
+        "day_count": (end_date - start_date).days + 1,
+        "downloaded_day_count": downloaded_days,
+    }
+
+
+def parse_period(start: str, end: str) -> tuple[date, date]:
+    try:
+        start_date = date.fromisoformat(start)
+        end_date = date.fromisoformat(end)
+    except (TypeError, ValueError) as error:
+        raise PeriodError("Period dates must be YYYY-MM-DD") from error
+    if end_date < start_date:
+        raise PeriodError("Period end is before start")
+    if (end_date - start_date).days + 1 > _MAX_PERIOD_DAYS:
+        raise PeriodError("Period is longer than 14 days")
+    return start_date, end_date
+
+
 def _select_target(connection: Any, activities: list[Any]) -> dict[str, Any] | None:
     fallback = None
     for activity in activities:
@@ -110,6 +234,7 @@ def _select_target(connection: Any, activities: list[Any]) -> dict[str, Any] | N
             day = _activity_day(activity)
         except ArchiveError:
             continue
+        _remember_activity(activity_id, _activity_name(activity), _activity_start(activity))
         existing_activity = find_activity_raw_object(connection, activity_id)
         existing_day = find_day_raw_object(connection, day)
         target = {
@@ -186,6 +311,35 @@ def _store_bytes(
     return record
 
 
+def _remember_activity(
+    garmin_activity_id: int, garmin_name: str | None, start_local: str | None
+) -> None:
+    with connect() as connection:
+        ensure_schema(connection)
+        upsert_activity_meta(connection, garmin_activity_id, garmin_name, start_local)
+
+
+def _activity_name(activity: dict[str, Any]) -> str | None:
+    name = activity.get("activityName")
+    if not isinstance(name, str):
+        return None
+    text = name.strip()
+    return text or None
+
+
+def _activity_start(activity: dict[str, Any]) -> str | None:
+    start = activity.get("startTimeLocal") or activity.get("startTimeGMT")
+    if not isinstance(start, str):
+        return None
+    text = start.strip().replace("T", " ")
+    if len(text) < 10 or text[4] != "-" or text[7] != "-":
+        return None
+    clock = text[11:19] if len(text) >= 19 else "00:00:00"
+    if len(clock) != 8 or clock[2] != ":" or clock[5] != ":":
+        clock = "00:00:00"
+    return f"{text[:10]} {clock}"
+
+
 def _activity_id(activity: dict[str, Any]) -> int:
     value = activity.get("activityId")
     if isinstance(value, bool):
@@ -211,5 +365,8 @@ __all__ = [
     "ArchiveError",
     "DatabaseNotConfigured",
     "EncryptionKeyMissing",
+    "PeriodError",
     "archive_latest",
+    "archive_period",
+    "parse_period",
 ]

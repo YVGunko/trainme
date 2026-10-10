@@ -189,6 +189,47 @@ def insert_raw_object(connection: psycopg.Connection, record: dict[str, Any]) ->
     return _raw_row(row)
 
 
+def upsert_activity_meta(
+    connection: psycopg.Connection,
+    garmin_activity_id: int,
+    garmin_name: str | None,
+    start_local: str | None,
+) -> None:
+    connection.execute(
+        """
+        INSERT INTO activity_meta (garmin_activity_id, garmin_name, start_local)
+        VALUES (%s, %s, %s)
+        ON CONFLICT (garmin_activity_id) DO UPDATE
+        SET garmin_name = COALESCE(EXCLUDED.garmin_name, activity_meta.garmin_name),
+            start_local = COALESCE(EXCLUDED.start_local, activity_meta.start_local),
+            updated_at = now()
+        """,
+        (garmin_activity_id, garmin_name, start_local),
+    )
+    connection.commit()
+
+
+def load_activity_meta(
+    connection: psycopg.Connection, garmin_activity_id: int
+) -> dict[str, Any] | None:
+    row = connection.execute(
+        """
+        SELECT garmin_name, title, description, to_char(start_local, 'YYYY-MM-DD HH24:MI:SS')
+        FROM activity_meta
+        WHERE garmin_activity_id = %s
+        """,
+        (garmin_activity_id,),
+    ).fetchone()
+    if row is None:
+        return None
+    return {
+        "garmin_name": row[0],
+        "title": row[1],
+        "description": row[2],
+        "start_local": row[3],
+    }
+
+
 def _raw_row(row: tuple) -> dict[str, Any]:
     return {
         "kind": row[0],
