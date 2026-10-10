@@ -13,11 +13,28 @@ class BlobUploadError(Exception):
     """Raised when Vercel Blob rejects an upload."""
 
 
+class BlobReadError(Exception):
+    """Raised when Vercel Blob rejects a read."""
+
+
+def get_private(pathname: str) -> bytes:
+    token, store_id = _credentials()
+    quoted = urllib.parse.quote(pathname.lstrip("/"), safe="/")
+    url = f"https://{store_id}.private.blob.vercel-storage.com/{quoted}?cache=0"
+    request = urllib.request.Request(
+        url,
+        method="GET",
+        headers={"authorization": f"Bearer {token}"},
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=60) as response:
+            return response.read()
+    except urllib.error.HTTPError as error:
+        raise BlobReadError(f"Blob read failed with HTTP {error.code}") from error
+
+
 def put_private(pathname: str, body: bytes, content_type: str) -> str:
-    token = os.environ.get("BLOB_READ_WRITE_TOKEN", "")
-    if not token:
-        raise BlobNotConfigured
-    store_id = _store_id(token)
+    token, store_id = _credentials()
     url = "https://vercel.com/api/blob/?" + urllib.parse.urlencode({"pathname": pathname})
     request = urllib.request.Request(
         url,
@@ -45,6 +62,13 @@ def put_private(pathname: str, body: bytes, content_type: str) -> str:
     if not isinstance(stored_path, str) or not stored_path:
         raise BlobUploadError("Blob upload did not return a pathname")
     return stored_path
+
+
+def _credentials() -> tuple[str, str]:
+    token = os.environ.get("BLOB_READ_WRITE_TOKEN", "")
+    if not token:
+        raise BlobNotConfigured
+    return token, _store_id(token)
 
 
 def _store_id(token: str) -> str:

@@ -1,0 +1,14 @@
+{
+  "name": "trainme",
+  "private": true,
+  "scripts": {
+    "prisma:generate": "prisma generate",
+    "postinstall": "prisma generate"
+  },
+  "dependencies": {
+    "@prisma/client": "6.19.3"
+  },
+  "devDependencies": {
+    "prisma": "6.19.3"
+  }
+}

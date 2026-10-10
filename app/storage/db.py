@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 from typing import Any
 
 import psycopg
@@ -39,11 +40,47 @@ def connect() -> psycopg.Connection:
 
 
 def ensure_schema(connection: psycopg.Connection) -> None:
-    for statement in _SCHEMA.split(";"):
-        sql = statement.strip()
-        if sql:
-            connection.execute(sql)
+    _execute_script(connection, _SCHEMA)
+    migration = (
+        Path(__file__).resolve().parents[2]
+        / "prisma"
+        / "migrations"
+        / "20261010120000_normalize_activity"
+        / "migration.sql"
+    )
+    _execute_script(connection, migration.read_text())
     connection.commit()
+
+
+def _execute_script(connection: psycopg.Connection, script: str) -> None:
+    for statement in _split_sql(script):
+        connection.execute(statement)
+
+
+def _split_sql(script: str) -> list[str]:
+    parts: list[str] = []
+    current: list[str] = []
+    in_dollar = False
+    index = 0
+    while index < len(script):
+        if script.startswith("$$", index):
+            in_dollar = not in_dollar
+            current.append("$$")
+            index += 2
+            continue
+        if script[index] == ";" and not in_dollar:
+            statement = "".join(current).strip()
+            if statement:
+                parts.append(statement)
+            current = []
+            index += 1
+            continue
+        current.append(script[index])
+        index += 1
+    tail = "".join(current).strip()
+    if tail:
+        parts.append(tail)
+    return parts
 
 
 def load_token(connection: psycopg.Connection, key_material: str) -> str | None:

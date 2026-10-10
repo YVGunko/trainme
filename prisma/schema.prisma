@@ -1,0 +1,114 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+/// One Garmin login. The live table only allows id = 1.
+model garmin_account {
+  id                  Int      @id @db.SmallInt
+  garmin_user_id      BigInt?
+  encrypted_auth_data Bytes
+  updated_at          DateTime @default(now()) @db.Timestamptz(6)
+}
+
+/// Raw Blob object. Queryable rows point here by format, path, and hash.
+model raw_object {
+  id                 BigInt    @id @default(autoincrement())
+  kind               String
+  garmin_activity_id BigInt?
+  day                DateTime? @db.Date
+  source_format      String
+  source_path        String
+  source_sha256      String    @unique
+  byte_size          Int
+  created_at         DateTime  @default(now()) @db.Timestamptz(6)
+}
+
+/// One Garmin activity, rebuilt from the stored FIT file.
+model activity {
+  id                   BigInt    @id @default(autoincrement())
+  garmin_activity_id   BigInt    @unique
+  sport                String?
+  sub_sport            String?
+  garmin_type_key      String?
+  start_at             DateTime? @db.Timestamptz(6)
+  end_at               DateTime? @db.Timestamptz(6)
+  duration_sec         Float?
+  moving_duration_sec  Float?
+  elapsed_duration_sec Float?
+  timezone_offset_min  Int?
+  distance_m           Float?
+  avg_hr               Float?
+  max_hr               Float?
+  avg_speed            Float?
+  calories             Float?
+  aerobic_effect       Float?
+  anaerobic_effect     Float?
+  training_effect_label String?
+  garmin_activity_load Float?
+  hr_zone_1_sec        Float?
+  hr_zone_2_sec        Float?
+  hr_zone_3_sec        Float?
+  hr_zone_4_sec        Float?
+  hr_zone_5_sec        Float?
+  source               String    @default("garmin")
+  source_format        String
+  source_path          String
+  source_sha256        String
+  created_at           DateTime  @default(now()) @db.Timestamptz(6)
+
+  running_activity running_activity?
+  samples          activity_sample[]
+}
+
+model running_activity {
+  activity_id                 BigInt  @id
+  avg_cadence_spm             Float?
+  elevation_gain_m            Float?
+  avg_ground_contact_time_ms  Float?
+  avg_vertical_oscillation_cm Float?
+  avg_stride_length_cm        Float?
+  activity                    activity @relation(fields: [activity_id], references: [id], onDelete: Cascade)
+}
+
+/// FIT record points only. Laps and splits stay in the raw file.
+model activity_sample {
+  activity_id BigInt
+  timestamp   DateTime @db.Timestamptz(6)
+  metric      String
+  value       Float
+  unit        String?
+  activity    activity @relation(fields: [activity_id], references: [id], onDelete: Cascade)
+
+  @@id([activity_id, timestamp, metric])
+}
+
+/// One training day. Columns stay empty when the raw JSON does not contain them.
+model daily_metrics {
+  date                      DateTime @id @db.Date
+  resting_hr                Float?
+  overnight_hrv             Float?
+  hrv_status                String?
+  sleep_duration_sec        Float?
+  sleep_score               Float?
+  readiness_score           Float?
+  readiness_level           String?
+  training_status           String?
+  vo2max_generic            Float?
+  vo2max_cycling            Float?
+  garmin_load_acute         Float?
+  garmin_load_chronic       Float?
+  garmin_acwr               Float?
+  monthly_load_aerobic_low  Float?
+  monthly_load_aerobic_high Float?
+  monthly_load_anaerobic    Float?
+  running_impact_load       Float?
+  running_tolerance         Float?
+  source_format             String
+  source_path               String
+  source_sha256             String
+}

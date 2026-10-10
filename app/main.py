@@ -17,7 +17,9 @@ from app.garmin.client import (
     GarminNotConfigured,
     fetch_recent_activities,
 )
-from app.storage.blob import BlobNotConfigured, BlobUploadError
+from app.normalize.fit import NormalizeError
+from app.normalize.load import normalize_latest
+from app.storage.blob import BlobNotConfigured, BlobReadError, BlobUploadError
 
 logger = logging.getLogger(__name__)
 
@@ -71,6 +73,24 @@ def archive(authorization: str | None = Header(default=None)) -> dict:
     except Exception as error:
         logger.warning("Archive failed: %s", type(error).__name__)
         raise HTTPException(status_code=502, detail="Archive failed")
+
+
+@app.post("/normalize")
+def normalize(authorization: str | None = Header(default=None)) -> dict:
+    _require_service_secret(authorization)
+    try:
+        return normalize_latest()
+    except (DatabaseNotConfigured, BlobNotConfigured):
+        raise HTTPException(status_code=503, detail="Archive storage is not configured")
+    except NormalizeError as error:
+        detail = "No archived file" if error.status_code == 404 else "Normalize failed"
+        raise HTTPException(status_code=error.status_code, detail=detail)
+    except BlobReadError:
+        logger.warning("Normalize failed")
+        raise HTTPException(status_code=502, detail="Normalize failed")
+    except Exception as error:
+        logger.warning("Normalize failed: %s", type(error).__name__)
+        raise HTTPException(status_code=502, detail="Normalize failed")
 
 
 def _require_service_secret(authorization: str | None) -> None:
