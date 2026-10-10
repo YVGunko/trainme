@@ -364,6 +364,11 @@ activity
 - hr_zone_3_sec
 - hr_zone_4_sec
 - hr_zone_5_sec
+- total_sets
+- volume_kg
+- est_sweat_loss_ml
+- primary_benefit
+- recovery_heart_rate
 - source
 - source_format
 - source_path

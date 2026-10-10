@@ -55,6 +55,11 @@ model activity {
   hr_zone_3_sec        Float?
   hr_zone_4_sec        Float?
   hr_zone_5_sec        Float?
+  total_sets           Float?
+  volume_kg            Float?
+  est_sweat_loss_ml    Float?
+  primary_benefit      String?
+  recovery_heart_rate  Float?
   source               String    @default("garmin")
   source_format        String
   source_path          String

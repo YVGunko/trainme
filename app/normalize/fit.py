@@ -11,6 +11,27 @@ _INVALID_SEMICIRCLE = 0x7FFFFFFF
 _MAX_OFFSET_MIN = 14 * 60
 _RIGHT_BALANCE = 0x8000
 _BALANCE_MASK = 0x3FFF
+# Names and scales from the FIT File Viewer undocumented-field table.
+# Field 202 has no published unit; other FIT heart-rate fields are bpm.
+_SESSION_EXTRAS = {
+    151: {"name": "total_sets"},
+    152: {"name": "volume", "scale": 100, "units": "kg"},
+    178: {"name": "est_sweat_loss", "units": "ml"},
+    188: {
+        "name": "primary_benefit",
+        "labels": {
+            0: "no_benefit",
+            1: "recovery",
+            2: "base",
+            3: "tempo",
+            4: "threshold",
+            5: "vo2_max",
+            6: "anaerobic",
+            7: "sprint",
+        },
+    },
+    202: {"name": "recovery_heart_rate", "units": "bpm"},
+}
 
 
 class NormalizeError(Exception):
@@ -81,6 +102,11 @@ def _session(session: Any, grouped: dict[str, list[Any]], records: list[Any]) ->
         "anaerobic_effect": _unitless(session, "total_anaerobic_training_effect"),
         "training_effect_label": None,
         "garmin_activity_load": _unitless(session, "training_load_peak"),
+        "total_sets": _extra_number(session, 151),
+        "volume_kg": _extra_number(session, 152),
+        "est_sweat_loss_ml": _extra_number(session, 178),
+        "primary_benefit": _extra_text(session, 188),
+        "recovery_heart_rate": _extra_number(session, 202),
         "running": _running(session, sport),
         "cycling": _cycling(session, sport),
         "sets": _strength_sets(grouped.get("set") or [], grouped.get("exercise_title") or []),
@@ -113,15 +139,53 @@ def _facts(message_name: str, message_index: int, message: Any) -> list[dict[str
 
 
 def _fact_values(message_name: str, message_index: int, field: Any) -> list[dict[str, Any]]:
+    spec = _SESSION_EXTRAS.get(field.def_num) if message_name == "session" else None
+    name = spec["name"] if spec else field.name
+    units = spec.get("units", field.units) if spec else field.units
     if isinstance(field.value, (list, tuple)):
         rows: list[dict[str, Any]] = []
         for ordinal, item in enumerate(field.value):
-            row = _one_fact(message_name, message_index, field.name, ordinal, item, field.units)
+            row = _one_fact(message_name, message_index, name, ordinal, item, units)
             if row is not None:
-                rows.append(row)
+                rows.append(_apply_extra(row, spec))
         return rows
-    row = _one_fact(message_name, message_index, field.name, 0, field.value, field.units)
-    return [] if row is None else [row]
+    row = _one_fact(message_name, message_index, name, 0, field.value, units)
+    return [] if row is None else [_apply_extra(row, spec)]
+
+
+def _apply_extra(row: dict[str, Any], spec: dict[str, Any] | None) -> dict[str, Any]:
+    if spec is None or row["value_num"] is None:
+        return row
+    scale = spec.get("scale")
+    if scale:
+        row["value_num"] = row["value_num"] / scale
+    labels = spec.get("labels")
+    if labels is not None:
+        row["value_text"] = labels.get(int(row["value_num"]))
+    return row
+
+
+def _extra_number(session: Any, def_num: int) -> float | None:
+    field = _field_by_num(session, def_num)
+    if field is None or not _is_number(field.value):
+        return None
+    number = float(field.value)
+    scale = _SESSION_EXTRAS[def_num].get("scale")
+    return number / scale if scale else number
+
+
+def _extra_text(session: Any, def_num: int) -> str | None:
+    number = _extra_number(session, def_num)
+    if number is None:
+        return None
+    return _SESSION_EXTRAS[def_num]["labels"].get(int(number))
+
+
+def _field_by_num(message: Any, def_num: int) -> Any:
+    for field in message.fields:
+        if field.def_num == def_num:
+            return field
+    return None
 
 
 def _one_fact(

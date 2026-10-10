@@ -141,6 +141,29 @@ class CyclingAndStrengthTest(unittest.TestCase):
         self.assertEqual(_field_names(parsed, "set"), _decoded_names(payload, "set"))
         self.assertEqual(_field_names(parsed, "session"), _decoded_names(payload, "session"))
 
+    def test_undocumented_session_fields_are_named_and_scaled(self) -> None:
+        parsed = parse_fit(_session_extra_fit())
+        self.assertEqual(parsed["total_sets"], 12)
+        self.assertEqual(parsed["volume_kg"], 250)
+        self.assertEqual(parsed["est_sweat_loss_ml"], 640)
+        self.assertEqual(parsed["primary_benefit"], "base")
+        self.assertEqual(parsed["recovery_heart_rate"], 120)
+        sets = _field_row(parsed, "session", "total_sets")
+        volume = _field_row(parsed, "session", "volume")
+        sweat = _field_row(parsed, "session", "est_sweat_loss")
+        benefit = _field_row(parsed, "session", "primary_benefit")
+        recovery = _field_row(parsed, "session", "recovery_heart_rate")
+        self.assertEqual(sets["value_num"], 12)
+        self.assertEqual(volume["value_num"], 250)
+        self.assertEqual(volume["unit"], "kg")
+        self.assertEqual(sweat["value_num"], 640)
+        self.assertEqual(sweat["unit"], "ml")
+        self.assertEqual(benefit["value_num"], 2)
+        self.assertEqual(benefit["value_text"], "base")
+        self.assertEqual(recovery["value_num"], 120)
+        self.assertEqual(recovery["unit"], "bpm")
+        self.assertNotIn("unknown_151", _field_names(parsed, "session"))
+
 
 class BlobReadTest(unittest.TestCase):
     def test_get_reads_a_private_blob_by_pathname(self) -> None:
@@ -314,6 +337,19 @@ def _strength_fit(start: datetime) -> bytes:
     ]
     values = struct.pack("<IHHB" + "IHH", 30_000, 8, 320, 1, raw, 0, 1)
     return _fit_file(session + _definition(1, 225, fields) + _message(1, values))
+
+
+def _session_extra_fit() -> bytes:
+    fields = [
+        (5, 1, 0x00),
+        (151, 2, 0x84),
+        (152, 4, 0x86),
+        (178, 2, 0x84),
+        (188, 1, 0x00),
+        (202, 1, 0x02),
+    ]
+    values = struct.pack("<BHIHBB", 1, 12, 25000, 640, 2, 120)
+    return _fit_file(_definition(0, 18, fields) + _message(0, values))
 
 
 def _field_names(parsed: dict[str, Any], message: str) -> set[str]:
