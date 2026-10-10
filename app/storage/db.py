@@ -41,14 +41,13 @@ def connect() -> psycopg.Connection:
 
 def ensure_schema(connection: psycopg.Connection) -> None:
     _execute_script(connection, _SCHEMA)
-    migration = (
-        Path(__file__).resolve().parents[2]
-        / "prisma"
-        / "migrations"
-        / "20261010120000_normalize_activity"
-        / "migration.sql"
+    migrations = sorted(
+        (
+            Path(__file__).resolve().parents[2] / "prisma" / "migrations"
+        ).glob("*/migration.sql")
     )
-    _execute_script(connection, migration.read_text())
+    for migration in migrations:
+        _execute_script(connection, migration.read_text())
     connection.commit()
 
 

@@ -376,23 +376,64 @@ Do not assume every field exists for every sport.
 
 Sport aggregates are one-to-one with activity. A row exists only for that sport.
 
-cycling_activity
+activity_field keeps every field present on the FIT session, activity, lap, set, split, and the other non-record messages. The FIT field name and unit are stored as decoded. A field that is not in the file is not invented. Record points stay in activity_sample, one row per numeric record field.
+
+cycling_activity exists when sport is cycling, including indoor_cycling.
 - activity_id
 - avg_power_w
+- max_power_w
 - normalized_power_w
 - intensity_factor
 - tss
 - avg_cadence_rpm
+- max_cadence_rpm
+- total_work_j
+- threshold_power_w
+- left_power_pct
+- avg_left_torque_effectiveness
+- avg_right_torque_effectiveness
+- avg_left_pedal_smoothness
+- avg_right_pedal_smoothness
+- avg_combined_pedal_smoothness
+- total_ascent_m
+- total_descent_m
 
 running_activity
 - activity_id
 - avg_cadence_spm
+- max_cadence_spm
+- avg_step_length_mm
+- avg_stride_length_cm
 - elevation_gain_m
+- total_descent_m
 - avg_ground_contact_time_ms
 - avg_vertical_oscillation_cm
-- avg_stride_length_cm
+- avg_vertical_ratio
+- avg_stance_time_percent
+- avg_stance_time_balance
+- avg_power_w
+- max_power_w
+- normalized_power_w
+- avg_respiration
+- max_respiration
+- total_strides
 
-Power-duration curves and swimming aggregates stay in the raw FIT or TCX file.
+Garmin Connect shows running cadence in steps/min, which is twice the FIT strides/min value, and stride length as twice the FIT step length. Those two display numbers are written on running_activity. The FIT values themselves stay in activity_field.
+
+strength_set is one row per FIT set.
+- activity_id
+- set_index
+- set_type
+- category
+- exercise
+- repetitions
+- weight_kg
+- duration_sec
+- start_at
+
+garmin_activity_load is FIT training_load_peak when that field is present. training_effect_label is not a FIT field.
+
+Power-duration curves stay in the raw FIT or TCX file.
 
 Activity samples
 
@@ -407,7 +448,7 @@ activity_sample
 
 Unique (activity_id, timestamp, metric).
 
-Rows are FIT/TCX record points only. Laps, splits, and beat-to-beat RR intervals stay in the raw file.
+Rows are the numeric fields of each FIT record point. Lap, split, set, and other FIT messages are stored in activity_field.
 
 Examples:
 

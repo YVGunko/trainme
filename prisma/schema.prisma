@@ -62,20 +62,89 @@ model activity {
   created_at           DateTime  @default(now()) @db.Timestamptz(6)
 
   running_activity running_activity?
+  cycling_activity cycling_activity?
+  strength_sets    strength_set[]
+  fields           activity_field[]
   samples          activity_sample[]
 }
 
 model running_activity {
   activity_id                 BigInt  @id
   avg_cadence_spm             Float?
+  max_cadence_spm             Float?
+  avg_step_length_mm          Float?
+  avg_stride_length_cm        Float?
   elevation_gain_m            Float?
+  total_descent_m             Float?
   avg_ground_contact_time_ms  Float?
   avg_vertical_oscillation_cm Float?
-  avg_stride_length_cm        Float?
+  avg_vertical_ratio          Float?
+  avg_stance_time_percent     Float?
+  avg_stance_time_balance     Float?
+  avg_power_w                 Float?
+  max_power_w                 Float?
+  normalized_power_w          Float?
+  avg_respiration             Float?
+  max_respiration             Float?
+  total_strides               Float?
   activity                    activity @relation(fields: [activity_id], references: [id], onDelete: Cascade)
 }
 
-/// FIT record points only. Laps and splits stay in the raw file.
+/// Cycling session totals, including indoor cycling. Absent sensors stay null.
+model cycling_activity {
+  activity_id                    BigInt  @id
+  avg_power_w                    Float?
+  max_power_w                    Float?
+  normalized_power_w             Float?
+  intensity_factor               Float?
+  tss                            Float?
+  avg_cadence_rpm                Float?
+  max_cadence_rpm                Float?
+  total_work_j                   Float?
+  threshold_power_w              Float?
+  left_power_pct                 Float?
+  avg_left_torque_effectiveness  Float?
+  avg_right_torque_effectiveness Float?
+  avg_left_pedal_smoothness      Float?
+  avg_right_pedal_smoothness     Float?
+  avg_combined_pedal_smoothness  Float?
+  total_ascent_m                 Float?
+  total_descent_m                Float?
+  activity                       activity @relation(fields: [activity_id], references: [id], onDelete: Cascade)
+}
+
+/// One FIT set from a strength activity.
+model strength_set {
+  activity_id   BigInt
+  set_index     Int
+  set_type      String?
+  category      String?
+  exercise      String?
+  repetitions   Float?
+  weight_kg     Float?
+  duration_sec  Float?
+  start_at      DateTime? @db.Timestamptz(6)
+  activity      activity  @relation(fields: [activity_id], references: [id], onDelete: Cascade)
+
+  @@id([activity_id, set_index])
+}
+
+/// Every decoded FIT field except per-second record points.
+model activity_field {
+  activity_id   BigInt
+  message       String
+  message_index Int
+  name          String
+  ordinal       Int
+  value_num     Float?
+  value_text    String?
+  unit          String?
+  activity      activity @relation(fields: [activity_id], references: [id], onDelete: Cascade)
+
+  @@id([activity_id, message, message_index, name, ordinal])
+}
+
+/// Numeric fields from each FIT record point.
 model activity_sample {
   activity_id BigInt
   timestamp   DateTime @db.Timestamptz(6)

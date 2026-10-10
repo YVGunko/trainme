@@ -41,6 +41,46 @@ _DAY_COLUMNS = (
     "resting_hr",
 )
 
+_RUNNING_COLUMNS = (
+    "avg_cadence_spm",
+    "max_cadence_spm",
+    "avg_step_length_mm",
+    "avg_stride_length_cm",
+    "elevation_gain_m",
+    "total_descent_m",
+    "avg_ground_contact_time_ms",
+    "avg_vertical_oscillation_cm",
+    "avg_vertical_ratio",
+    "avg_stance_time_percent",
+    "avg_stance_time_balance",
+    "avg_power_w",
+    "max_power_w",
+    "normalized_power_w",
+    "avg_respiration",
+    "max_respiration",
+    "total_strides",
+)
+
+_CYCLING_COLUMNS = (
+    "avg_power_w",
+    "max_power_w",
+    "normalized_power_w",
+    "intensity_factor",
+    "tss",
+    "avg_cadence_rpm",
+    "max_cadence_rpm",
+    "total_work_j",
+    "threshold_power_w",
+    "left_power_pct",
+    "avg_left_torque_effectiveness",
+    "avg_right_torque_effectiveness",
+    "avg_left_pedal_smoothness",
+    "avg_right_pedal_smoothness",
+    "avg_combined_pedal_smoothness",
+    "total_ascent_m",
+    "total_descent_m",
+)
+
 
 def latest_raw_object(
     connection: psycopg.Connection, kind: str, source_format: str
@@ -80,19 +120,35 @@ def write_normalized(
 ) -> dict[str, Any]:
     activity_id = _upsert_activity(connection, garmin_activity_id, parsed, activity_source)
     sample_count = _replace_samples(connection, activity_id, parsed["samples"])
+    field_count = _replace_fields(connection, activity_id, parsed["fields"])
     running = parsed["running"]
+    cycling = parsed["cycling"]
+    sets = parsed["sets"]
     if running is None:
         connection.execute("DELETE FROM running_activity WHERE activity_id = %s", (activity_id,))
     else:
-        _upsert_running(connection, activity_id, running)
+        _upsert_keyed(connection, "running_activity", activity_id, _RUNNING_COLUMNS, running)
+    if cycling is None:
+        connection.execute("DELETE FROM cycling_activity WHERE activity_id = %s", (activity_id,))
+    else:
+        _upsert_keyed(connection, "cycling_activity", activity_id, _CYCLING_COLUMNS, cycling)
+    set_count = _replace_sets(connection, activity_id, sets)
     written_fields = _upsert_day(connection, day, day_fields, day_source)
     connection.commit()
+    session_fields = sorted(
+        {row["name"] for row in parsed["fields"] if row["message"] == "session"}
+    )
     return {
         "activity": {
             "garmin_activity_id": garmin_activity_id,
             "sport": parsed["sport"],
+            "sub_sport": parsed["sub_sport"],
             "sample_count": sample_count,
+            "field_count": field_count,
+            "session_fields": session_fields,
             "running_activity": running is not None,
+            "cycling_activity": cycling is not None,
+            "strength_set_count": set_count,
             "source_sha256": activity_source["source_sha256"],
         },
         "day": {"date": day.isoformat(), "fields": written_fields},
@@ -124,7 +180,7 @@ def _upsert_activity(
         "aerobic_effect": parsed["aerobic_effect"],
         "anaerobic_effect": parsed["anaerobic_effect"],
         "training_effect_label": None,
-        "garmin_activity_load": None,
+        "garmin_activity_load": parsed["garmin_activity_load"],
         "source": "garmin",
         "source_format": source["source_format"],
         "source_path": source["source_path"],
@@ -154,30 +210,85 @@ def _upsert_activity(
     return int(row[0])
 
 
-def _upsert_running(connection: psycopg.Connection, activity_id: int, running: dict[str, Any]) -> None:
+def _upsert_keyed(
+    connection: psycopg.Connection,
+    table: str,
+    activity_id: int,
+    columns: tuple[str, ...],
+    values: dict[str, Any],
+) -> None:
+    quoted = ", ".join(columns)
+    placeholders = ", ".join(["%s"] * (len(columns) + 1))
+    assignments = ", ".join(f"{column} = EXCLUDED.{column}" for column in columns)
     connection.execute(
-        """
-        INSERT INTO running_activity (
-            activity_id, avg_cadence_spm, elevation_gain_m,
-            avg_ground_contact_time_ms, avg_vertical_oscillation_cm, avg_stride_length_cm
-        )
-        VALUES (%s, %s, %s, %s, %s, %s)
+        f"""
+        INSERT INTO {table} (activity_id, {quoted})
+        VALUES ({placeholders})
         ON CONFLICT (activity_id) DO UPDATE
-        SET avg_cadence_spm = EXCLUDED.avg_cadence_spm,
-            elevation_gain_m = EXCLUDED.elevation_gain_m,
-            avg_ground_contact_time_ms = EXCLUDED.avg_ground_contact_time_ms,
-            avg_vertical_oscillation_cm = EXCLUDED.avg_vertical_oscillation_cm,
-            avg_stride_length_cm = EXCLUDED.avg_stride_length_cm
+        SET {assignments}
         """,
-        (
-            activity_id,
-            running.get("avg_cadence_spm"),
-            running.get("elevation_gain_m"),
-            running.get("avg_ground_contact_time_ms"),
-            running.get("avg_vertical_oscillation_cm"),
-            running.get("avg_stride_length_cm"),
-        ),
+        (activity_id, *[values.get(column) for column in columns]),
     )
+
+
+def _replace_fields(connection: psycopg.Connection, activity_id: int, fields: list[dict[str, Any]]) -> int:
+    connection.execute("DELETE FROM activity_field WHERE activity_id = %s", (activity_id,))
+    if not fields:
+        return 0
+    with connection.cursor() as cursor:
+        cursor.executemany(
+            """
+            INSERT INTO activity_field (
+                activity_id, message, message_index, name, ordinal, value_num, value_text, unit
+            )
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            """,
+            [
+                (
+                    activity_id,
+                    row["message"],
+                    row["message_index"],
+                    row["name"],
+                    row["ordinal"],
+                    row["value_num"],
+                    row["value_text"],
+                    row["unit"],
+                )
+                for row in fields
+            ],
+        )
+    return len(fields)
+
+
+def _replace_sets(connection: psycopg.Connection, activity_id: int, sets: list[dict[str, Any]]) -> int:
+    connection.execute("DELETE FROM strength_set WHERE activity_id = %s", (activity_id,))
+    if not sets:
+        return 0
+    with connection.cursor() as cursor:
+        cursor.executemany(
+            """
+            INSERT INTO strength_set (
+                activity_id, set_index, set_type, category, exercise,
+                repetitions, weight_kg, duration_sec, start_at
+            )
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """,
+            [
+                (
+                    activity_id,
+                    row["set_index"],
+                    row["set_type"],
+                    row["category"],
+                    row["exercise"],
+                    row["repetitions"],
+                    row["weight_kg"],
+                    row["duration_sec"],
+                    row["start_at"],
+                )
+                for row in sets
+            ],
+        )
+    return len(sets)
 
 
 def _replace_samples(connection: psycopg.Connection, activity_id: int, samples: list[dict[str, Any]]) -> int:
