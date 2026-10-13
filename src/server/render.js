@@ -18,6 +18,12 @@ export async function callRender(path, body) {
   if (!response.ok) {
     const error = new Error('render failed');
     error.status = response.status;
+    try {
+      const payload = await response.json();
+      if (payload && typeof payload.detail === 'string') error.detail = payload.detail;
+    } catch {
+      // The status already describes the failure.
+    }
     throw error;
   }
   return response.json();

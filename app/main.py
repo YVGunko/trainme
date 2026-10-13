@@ -19,6 +19,11 @@ from app.garmin.client import (
     GarminNotConfigured,
     fetch_recent_activities,
 )
+from app.garmin.workout import (
+    WorkoutDateError,
+    WorkoutNotScheduled,
+    schedule_test_strength_workout,
+)
 from app.normalize.fit import NormalizeError
 from app.normalize.load import normalize_activity, normalize_latest
 from app.storage.blob import BlobNotConfigured, BlobReadError, BlobUploadError
@@ -105,6 +110,46 @@ def archive_for_period(
     except Exception as error:
         logger.warning("Archive failed: %s", type(error).__name__)
         raise HTTPException(status_code=502, detail="Archive failed")
+
+
+@app.post("/workouts/strength-test")
+def strength_test_workout(
+    body: dict | None = Body(default=None),
+    authorization: str | None = Header(default=None),
+) -> dict:
+    _require_service_secret(authorization)
+    payload = body if isinstance(body, dict) else {}
+    day = payload.get("date")
+    if not isinstance(day, str):
+        raise HTTPException(status_code=400, detail="Date must be YYYY-MM-DD")
+    try:
+        return schedule_test_strength_workout(day)
+    except WorkoutDateError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+    except WorkoutNotScheduled as error:
+        logger.warning(
+            "Workout %s uploaded but not scheduled: %s",
+            error.workout_id,
+            type(error.__cause__).__name__,
+        )
+        status = 429 if isinstance(error.__cause__, GarminConnectTooManyRequestsError) else 502
+        raise HTTPException(
+            status_code=status,
+            detail=f"Workout {error.workout_id} was uploaded but not scheduled",
+        ) from error
+    except (GarminNotConfigured, DatabaseNotConfigured, EncryptionKeyMissing):
+        raise HTTPException(status_code=503, detail="Garmin upload is not configured")
+    except GarminConnectAuthenticationError:
+        logger.warning("Garmin authentication failed")
+        raise HTTPException(status_code=401, detail="Garmin authentication failed")
+    except GarminConnectTooManyRequestsError:
+        raise HTTPException(status_code=429, detail="Garmin rate limit")
+    except GarminConnectConnectionError:
+        logger.warning("Workout upload failed")
+        raise HTTPException(status_code=502, detail="Workout upload failed")
+    except Exception as error:
+        logger.warning("Workout upload failed: %s", type(error).__name__)
+        raise HTTPException(status_code=502, detail="Workout upload failed")
 
 
 @app.post("/normalize")
