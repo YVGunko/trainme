@@ -23,6 +23,8 @@ export function ActivityBoard({ activities, onRefresh }) {
   const [start, setStart] = useState('');
   const [end, setEnd] = useState('');
   const [loadingPeriod, setLoadingPeriod] = useState(false);
+  const [probeDate, setProbeDate] = useState('2026-10-14');
+  const [probing, setProbing] = useState(false);
 
   const visible = useMemo(
     () => sortActivities(filterActivities(activities, query), sorting),
@@ -125,8 +127,47 @@ export function ActivityBoard({ activities, onRefresh }) {
     }
   }
 
+  async function probeGarmin(event) {
+    event.preventDefault();
+    setProbing(true);
+    setError('');
+    setMessage('');
+    try {
+      const response = await fetch('/api/probe/unused-garmin', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ date: probeDate }),
+      });
+      const data = await response.json();
+      if (!response.ok || !data.ok) {
+        setError(data.error || 'Проверка Garmin не удалась');
+        return;
+      }
+      saveReport(probeDate, data.result);
+      setMessage(`Файл probe-unused-${probeDate}.json сохранён в загрузки браузера.`);
+    } catch {
+      setError('Проверка Garmin не удалась');
+    } finally {
+      setProbing(false);
+    }
+  }
+
   return (
     <section>
+      <form className="toolbar" onSubmit={probeGarmin}>
+        <label>
+          День отчёта
+          <input
+            type="date"
+            value={probeDate}
+            onChange={(event) => setProbeDate(event.target.value)}
+            required
+          />
+        </label>
+        <button type="submit" disabled={probing}>
+          {probing ? 'Запрос...' : 'Снять отчёт Garmin'}
+        </button>
+      </form>
       <form className="toolbar" onSubmit={loadPeriod}>
         <label>
           С
@@ -225,4 +266,16 @@ export function ActivityBoard({ activities, onRefresh }) {
       ) : null}
     </section>
   );
+}
+
+function saveReport(day, report) {
+  const blob = new Blob([JSON.stringify(report, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `probe-unused-${day}.json`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
 }

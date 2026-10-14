@@ -1,8 +1,11 @@
+import json
 import logging
 import os
 import secrets
+from datetime import date
 
 from fastapi import Body, FastAPI, Header, HTTPException, Query
+from fastapi.responses import Response
 
 from app.garmin.archive import (
     ArchiveError,
@@ -19,6 +22,7 @@ from app.garmin.client import (
     GarminNotConfigured,
     fetch_recent_activities,
 )
+from app.garmin.probe import probe_unused
 from app.garmin.workout import (
     WorkoutDateError,
     WorkoutNotScheduled,
@@ -150,6 +154,41 @@ def strength_test_workout(
     except Exception as error:
         logger.warning("Workout upload failed: %s", type(error).__name__)
         raise HTTPException(status_code=502, detail="Workout upload failed")
+
+
+@app.post("/probe/unused-garmin")
+def probe_unused_garmin(
+    body: dict | None = Body(default=None),
+    authorization: str | None = Header(default=None),
+) -> Response:
+    _require_service_secret(authorization)
+    payload = body if isinstance(body, dict) else {}
+    raw = payload.get("date")
+    if not isinstance(raw, str) or len(raw) != 10 or raw[4] != "-" or raw[7] != "-":
+        raise HTTPException(status_code=400, detail="Date must be YYYY-MM-DD")
+    try:
+        day = date.fromisoformat(raw)
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail="Date must be YYYY-MM-DD") from error
+    try:
+        report = probe_unused(day)
+    except (GarminNotConfigured, DatabaseNotConfigured, EncryptionKeyMissing):
+        raise HTTPException(status_code=503, detail="Garmin probe is not configured")
+    except GarminConnectAuthenticationError:
+        logger.warning("Garmin authentication failed")
+        raise HTTPException(status_code=401, detail="Garmin authentication failed")
+    except GarminConnectTooManyRequestsError:
+        raise HTTPException(status_code=429, detail="Garmin rate limit")
+    except GarminConnectConnectionError:
+        logger.warning("Garmin probe failed")
+        raise HTTPException(status_code=502, detail="Garmin probe failed")
+    except Exception as error:
+        logger.warning("Garmin probe failed: %s", type(error).__name__)
+        raise HTTPException(status_code=502, detail="Garmin probe failed")
+    return Response(
+        content=json.dumps(report, ensure_ascii=False, default=str),
+        media_type="application/json",
+    )
 
 
 @app.post("/normalize")
