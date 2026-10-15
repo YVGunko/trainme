@@ -212,6 +212,7 @@ def archive_period(start: str, end: str) -> dict[str, Any]:
         "end": end_date.isoformat(),
         "activity_count": len(archived),
         "downloaded_activity_count": downloaded_activities,
+        "activities": archived,
         "day_count": (end_date - start_date).days + 1,
         "downloaded_day_count": downloaded_days,
     }

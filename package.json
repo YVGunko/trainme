@@ -6,12 +6,13 @@
     "dev": "next dev",
     "build": "node scripts/with-database-url.mjs generate && next build",
     "start": "next start",
-    "test": "node --test tests/auth.test.js tests/format.test.js tests/table.test.js",
+    "test": "node --test tests/auth.test.js tests/format.test.js tests/table.test.js tests/activity-queue.test.js",
     "prisma:generate": "node scripts/with-database-url.mjs generate",
     "postinstall": "node scripts/with-database-url.mjs generate"
   },
   "dependencies": {
     "@prisma/client": "6.19.3",
+    "@vercel/queue": "^0.2.0",
     "next": "^15.5.27",
     "react": "^19.3.0",
     "react-dom": "^19.3.0"

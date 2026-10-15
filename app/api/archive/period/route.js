@@ -1,3 +1,4 @@
+import { publishActivityParses } from '@/server/queue';
 import { callRender } from '@/server/render';
 import { requireUser } from '@/server/session';
 
@@ -20,7 +21,8 @@ export async function POST(request) {
       );
     }
     const result = await callRender('/archive/period', { start, end });
-    return Response.json({ ok: true, result });
+    const queue = await publishActivityParses(result);
+    return Response.json({ ok: true, result, queue });
   } catch (error) {
     if (error?.message === 'unauthorized') {
       return Response.json({ ok: false, error: 'Нужно войти' }, { status: 401 });

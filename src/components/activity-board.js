@@ -116,8 +116,16 @@ export function ActivityBoard({ activities, onRefresh }) {
         return;
       }
       const result = data.result || {};
+      const queued = Array.isArray(data.queue?.queued) ? data.queue.queued.length : 0;
+      const failed = Array.isArray(data.queue?.failed) ? data.queue.failed.length : 0;
+      const parseNote = [
+        queued ? `Разбор поставлен в очередь: ${queued}.` : '',
+        failed ? `Не удалось поставить в очередь: ${failed}.` : '',
+      ]
+        .filter(Boolean)
+        .join(' ');
       setMessage(
-        `За период ${result.start} — ${result.end}: новых файлов ${result.downloaded_activity_count ?? 0} из ${result.activity_count ?? 0}. Дней скачано ${result.downloaded_day_count ?? 0}.`
+        `За период ${result.start} — ${result.end}: новых файлов ${result.downloaded_activity_count ?? 0} из ${result.activity_count ?? 0}. Дней скачано ${result.downloaded_day_count ?? 0}. ${parseNote}`.trim()
       );
       onRefresh();
     } catch {

@@ -214,6 +214,13 @@ class PeriodTest(unittest.TestCase):
         self.assertEqual(result["downloaded_activity_count"], 1)
         self.assertEqual(result["day_count"], 3)
         self.assertEqual(result["downloaded_day_count"], 2)
+        self.assertEqual(
+            result["activities"],
+            [
+                {"garmin_activity_id": 9, "day": "2026-10-09", "stored": False},
+                {"garmin_activity_id": 8, "day": "2026-10-07", "stored": True},
+            ],
+        )
         self.assertIn((9, "Morning", "2026-10-09 07:21:13"), remembered)
         self.assertIn((8, "Bike", "2026-10-07 18:47:45"), remembered)
 
