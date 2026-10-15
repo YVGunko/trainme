@@ -46,6 +46,70 @@ class DayMetricsTest(unittest.TestCase):
             },
         )
 
+    def test_daily_status_uses_the_primary_device_and_precise_vo2(self) -> None:
+        payload = {
+            "sleep": {"dailySleepDTO": {"avgSleepHRV": None}},
+            "heart_rate": {},
+            "hrv": {
+                "hrvSummary": {"status": "UNBALANCED", "lastNightAvg": 94},
+                "hrvReadings": [{"value": 1}],
+            },
+            "training_readiness": [
+                {
+                    "primaryActivityTracker": True,
+                    "timestamp": "2026-10-15T02:36:22.0",
+                    "score": 70,
+                    "level": "LOW",
+                },
+                {
+                    "primaryActivityTracker": True,
+                    "timestamp": "2026-10-15T03:57:13.0",
+                    "score": 76,
+                    "level": "HIGH",
+                },
+            ],
+            "daily_training_status": {
+                "latestTrainingStatusData": {
+                    "other": {"primaryTrainingDevice": False, "trainingStatusFeedbackPhrase": "OTHER"},
+                    "primary": {
+                        "primaryTrainingDevice": True,
+                        "trainingStatus": 4,
+                        "trainingStatusFeedbackPhrase": "MAINTAINING_2",
+                        "acuteTrainingLoadDTO": {
+                            "dailyTrainingLoadAcute": 573,
+                            "dailyTrainingLoadChronic": 590,
+                            "dailyAcuteChronicWorkloadRatio": 0.9,
+                            "acwrPercent": 38,
+                        },
+                    },
+                }
+            },
+            "max_metrics": [
+                {"generic": None, "cycling": {"vo2MaxPreciseValue": 54.4, "vo2MaxValue": 54}}
+            ],
+            "four_week_load_balance": {
+                "metricsTrainingLoadBalanceDTOMap": {
+                    "primary": {
+                        "primaryTrainingDevice": True,
+                        "monthlyLoadAerobicLow": 967.12445,
+                        "monthlyLoadAerobicHigh": 1143.1078,
+                        "monthlyLoadAnaerobic": 112.59972,
+                    }
+                }
+            },
+            "running_tolerance": [],
+        }
+        metrics = day_metrics(payload)
+        self.assertNotIn("overnight_hrv", metrics)
+        self.assertEqual(metrics["hrv_status"], "UNBALANCED")
+        self.assertEqual(metrics["readiness_score"], 76.0)
+        self.assertEqual(metrics["readiness_level"], "HIGH")
+        self.assertEqual(metrics["training_status"], "MAINTAINING_2")
+        self.assertEqual(metrics["garmin_acwr"], 0.9)
+        self.assertNotIn("vo2max_generic", metrics)
+        self.assertEqual(metrics["vo2max_cycling"], 54.4)
+        self.assertEqual(metrics["monthly_load_anaerobic"], 112.59972)
+
 
 class FitParseTest(unittest.TestCase):
     def test_zip_without_a_fit_file_is_rejected(self) -> None:

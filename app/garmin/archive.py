@@ -1,5 +1,6 @@
 import hashlib
 import json
+import logging
 import os
 from datetime import date, timedelta
 from typing import Any
@@ -10,6 +11,8 @@ from garminconnect import (
 )
 
 from app.garmin.client import GarminNotConfigured
+from app.normalize.day import day_metrics, without_hrv_readings
+from app.normalize.store import write_day_metrics
 from app.storage.crypto import EncryptionKeyMissing
 from app.storage.db import (
     DatabaseNotConfigured,
@@ -25,7 +28,9 @@ from app.storage.db import (
     save_power_zone_seconds,
     upsert_activity_meta,
 )
-from app.storage.blob import put_private
+from app.storage.blob import get_private, put_private
+
+logger = logging.getLogger(__name__)
 
 
 class ArchiveError(Exception):
@@ -181,30 +186,7 @@ def archive_period(start: str, end: str) -> dict[str, Any]:
     current = start_date
     while current <= end_date:
         day = current.isoformat()
-        with connect() as connection:
-            existing_day = find_day_raw_object(connection, day)
-        if existing_day is None:
-            day_body = json.dumps(
-                {
-                    "sleep": client.get_sleep_data(day),
-                    "heart_rate": client.get_heart_rates(day),
-                },
-                separators=(",", ":"),
-                ensure_ascii=False,
-            ).encode()
-            with connect() as connection:
-                _store_bytes(
-                    connection,
-                    body=day_body,
-                    kind="day",
-                    source_format="json",
-                    pathname=f"garmin/{user_id}/day/{day}",
-                    extension="json",
-                    content_type="application/json",
-                    garmin_activity_id=None,
-                    day=day,
-                )
-            downloaded_days += 1
+        downloaded_days += _archive_day(client, user_id, day)
         current += timedelta(days=1)
 
     return {
@@ -324,6 +306,76 @@ def _remember_activity(
     with connect() as connection:
         ensure_schema(connection)
         upsert_activity_meta(connection, garmin_activity_id, garmin_name, start_local)
+
+
+def _archive_day(client: Garmin, user_id: int | str, day: str) -> int:
+    with connect() as connection:
+        existing = find_day_raw_object(connection, day)
+    sleep, heart = _stored_sleep(existing)
+    downloaded = 0
+    if sleep is None or heart is None:
+        sleep = client.get_sleep_data(day)
+        heart = client.get_heart_rates(day)
+        downloaded = 1
+    document: dict[str, Any] = {"sleep": sleep, "heart_rate": heart}
+    document.update(_daily_sections(client, day))
+    body = json.dumps(document, separators=(",", ":"), ensure_ascii=False).encode()
+    with connect() as connection:
+        record = _store_bytes(
+            connection,
+            body=body,
+            kind="day",
+            source_format="json",
+            pathname=f"garmin/{user_id}/day/{day}",
+            extension="json",
+            content_type="application/json",
+            garmin_activity_id=None,
+            day=day,
+        )
+        write_day_metrics(connection, date.fromisoformat(day), day_metrics(document), record)
+    return downloaded
+
+
+def _stored_sleep(existing: dict[str, Any] | None) -> tuple[Any, Any]:
+    if existing is None:
+        return None, None
+    try:
+        payload = json.loads(get_private(existing["source_path"]))
+    except (OSError, UnicodeError, json.JSONDecodeError, ValueError):
+        logger.warning("Stored day file could not be read")
+        return None, None
+    except Exception as error:
+        logger.warning("Stored day file could not be read: %s", type(error).__name__)
+        return None, None
+    if not isinstance(payload, dict):
+        return None, None
+    sleep = payload.get("sleep")
+    heart = payload.get("heart_rate")
+    if not isinstance(sleep, dict) or not isinstance(heart, dict):
+        return None, None
+    return sleep, heart
+
+
+def _daily_sections(client: Garmin, day: str) -> dict[str, Any]:
+    calls = (
+        ("hrv", lambda: without_hrv_readings(client.get_hrv_data(day))),
+        ("training_readiness", lambda: client.get_training_readiness(day)),
+        ("daily_training_status", lambda: client.get_daily_training_status(day)),
+        ("max_metrics", lambda: client.get_max_metrics(day)),
+        ("four_week_load_balance", lambda: client.get_training_four_week_load_balance(day)),
+        ("running_tolerance", lambda: client.get_running_tolerance(day, day, "daily")),
+    )
+    found: dict[str, Any] = {}
+    for key, read in calls:
+        try:
+            value = read()
+        except Exception as error:
+            logger.warning("Daily Garmin read failed: %s %s", key, type(error).__name__)
+            continue
+        if value is None:
+            continue
+        found[key] = value
+    return found
 
 
 def list_hr_zone_seconds(activity: dict[str, Any]) -> dict[str, float]:

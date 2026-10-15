@@ -311,6 +311,96 @@ class PeriodTest(unittest.TestCase):
             )
         self.assertEqual(response.status_code, 400)
 
+    def test_period_writes_daily_metrics_without_redownloading_sleep(self) -> None:
+        client = _garmin_client([])
+        client.get_activities_by_date.return_value = []
+        client.get_hrv_data.return_value = {
+            "hrvSummary": {"status": "UNBALANCED"},
+            "hrvReadings": [{"value": 1}],
+        }
+        client.get_training_readiness.return_value = [
+            {
+                "primaryActivityTracker": True,
+                "timestamp": "2026-10-15T02:36:22.0",
+                "score": 70,
+                "level": "LOW",
+            },
+            {
+                "primaryActivityTracker": True,
+                "timestamp": "2026-10-15T03:57:13.0",
+                "score": 76,
+                "level": "HIGH",
+            },
+        ]
+        client.get_daily_training_status.return_value = {
+            "latestTrainingStatusData": {
+                "1": {"primaryTrainingDevice": False, "trainingStatusFeedbackPhrase": "OTHER"},
+                "2": {
+                    "primaryTrainingDevice": True,
+                    "trainingStatus": 4,
+                    "trainingStatusFeedbackPhrase": "MAINTAINING_2",
+                    "acuteTrainingLoadDTO": {
+                        "dailyTrainingLoadAcute": 573,
+                        "dailyTrainingLoadChronic": 590,
+                        "dailyAcuteChronicWorkloadRatio": 0.9,
+                        "acwrPercent": 38,
+                    },
+                },
+            }
+        }
+        client.get_max_metrics.return_value = [
+            {"generic": None, "cycling": {"vo2MaxPreciseValue": 54.4, "vo2MaxValue": 54}}
+        ]
+        client.get_training_four_week_load_balance.return_value = {
+            "metricsTrainingLoadBalanceDTOMap": {
+                "2": {
+                    "primaryTrainingDevice": True,
+                    "monthlyLoadAerobicLow": 967.12445,
+                    "monthlyLoadAerobicHigh": 1143.1078,
+                    "monthlyLoadAnaerobic": 112.59972,
+                }
+            }
+        }
+        client.get_running_tolerance.side_effect = RuntimeError("down")
+        bodies: list[bytes] = []
+
+        def store(_connection: object, **kwargs: object) -> dict:
+            body = kwargs["body"]
+            assert isinstance(body, bytes)
+            bodies.append(body)
+            record = _raw("day", None, kwargs["day"] if isinstance(kwargs["day"], str) else None)
+            record["stored"] = True
+            return record
+
+        with _archive_patches(client, activity_ids=set(), days={"2026-10-15"}):
+            with patch("app.garmin.archive._store_bytes", side_effect=store):
+                with patch("app.garmin.archive.write_day_metrics") as write:
+                    result = archive_period("2026-10-15", "2026-10-15")
+
+        client.get_sleep_data.assert_not_called()
+        client.get_heart_rates.assert_not_called()
+        client.get_hrv_data.assert_called_once_with("2026-10-15")
+        client.get_running_tolerance.assert_called_once_with("2026-10-15", "2026-10-15", "daily")
+        self.assertEqual(result["downloaded_day_count"], 0)
+        stored = json.loads(bodies[0])
+        self.assertNotIn("hrvReadings", stored["hrv"])
+        self.assertEqual(stored["hrv"]["hrvSummary"]["status"], "UNBALANCED")
+        fields = write.call_args.args[2]
+        self.assertEqual(fields["hrv_status"], "UNBALANCED")
+        self.assertEqual(fields["readiness_score"], 76.0)
+        self.assertEqual(fields["readiness_level"], "HIGH")
+        self.assertEqual(fields["training_status"], "MAINTAINING_2")
+        self.assertEqual(fields["garmin_load_acute"], 573.0)
+        self.assertEqual(fields["garmin_load_chronic"], 590.0)
+        self.assertEqual(fields["garmin_acwr"], 0.9)
+        self.assertNotIn("vo2max_generic", fields)
+        self.assertEqual(fields["vo2max_cycling"], 54.4)
+        self.assertEqual(fields["monthly_load_aerobic_low"], 967.12445)
+        self.assertEqual(fields["monthly_load_aerobic_high"], 1143.1078)
+        self.assertEqual(fields["monthly_load_anaerobic"], 112.59972)
+        self.assertNotIn("running_tolerance", fields)
+        self.assertNotIn("running_impact_load", fields)
+
 
 def _garmin_client(activities: list[dict]) -> MagicMock:
     client = MagicMock()
@@ -320,6 +410,12 @@ def _garmin_client(activities: list[dict]) -> MagicMock:
     client.download_activity.return_value = b"zip"
     client.get_sleep_data.return_value = {"dailySleepDTO": {}}
     client.get_heart_rates.return_value = {"restingHeartRate": 48}
+    client.get_hrv_data.return_value = {"hrvSummary": {"status": "BALANCED"}, "hrvReadings": [1]}
+    client.get_training_readiness.return_value = []
+    client.get_daily_training_status.return_value = {"latestTrainingStatusData": {}}
+    client.get_max_metrics.return_value = []
+    client.get_training_four_week_load_balance.return_value = {"metricsTrainingLoadBalanceDTOMap": {}}
+    client.get_running_tolerance.return_value = []
     return client
 
 
@@ -385,6 +481,17 @@ class _archive_patches:
         )
         stack.enter_context(patch("app.garmin.archive.find_day_raw_object", side_effect=find_day))
         stack.enter_context(patch("app.garmin.archive._store_bytes", side_effect=store))
+        stack.enter_context(
+            patch(
+                "app.garmin.archive.get_private",
+                return_value=json.dumps(
+                    {
+                        "sleep": {"dailySleepDTO": {"sleepTimeSeconds": 1}},
+                        "heart_rate": {"restingHeartRate": 48},
+                    }
+                ).encode(),
+            )
+        )
         self._stack = stack
         stack.__enter__()
         return None

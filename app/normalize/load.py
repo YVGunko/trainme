@@ -63,7 +63,7 @@ def normalize_activity(garmin_activity_id: int) -> dict[str, Any]:
 
             day_raw = None
             day = None
-            metrics: dict[str, float] = {}
+            metrics: dict[str, Any] = {}
             if day_text:
                 day_raw = find_day_raw_object(connection, day_text)
                 if day_raw is not None:

@@ -46,6 +46,18 @@ _DAY_COLUMNS = (
     "sleep_score",
     "overnight_hrv",
     "resting_hr",
+    "hrv_status",
+    "readiness_score",
+    "readiness_level",
+    "training_status",
+    "vo2max_generic",
+    "vo2max_cycling",
+    "garmin_load_acute",
+    "garmin_load_chronic",
+    "garmin_acwr",
+    "monthly_load_aerobic_low",
+    "monthly_load_aerobic_high",
+    "monthly_load_anaerobic",
 )
 
 _RUNNING_COLUMNS = (
@@ -155,7 +167,7 @@ def write_normalized(
     parsed: dict[str, Any],
     activity_source: dict[str, Any],
     day: date | None,
-    day_fields: dict[str, float],
+    day_fields: dict[str, Any],
     day_source: dict[str, Any] | None,
 ) -> dict[str, Any]:
     activity_id = _upsert_activity(connection, garmin_activity_id, parsed, activity_source)
@@ -369,10 +381,21 @@ def _replace_samples(connection: psycopg.Connection, activity_id: int, samples: 
     return len(samples)
 
 
+def write_day_metrics(
+    connection: psycopg.Connection,
+    day: date,
+    fields: dict[str, Any],
+    source: dict[str, Any],
+) -> list[str]:
+    written = _upsert_day(connection, day, fields, source)
+    connection.commit()
+    return written
+
+
 def _upsert_day(
     connection: psycopg.Connection,
     day: date,
-    fields: dict[str, float],
+    fields: dict[str, Any],
     source: dict[str, Any],
 ) -> list[str]:
     columns = ["date", "source_format", "source_path", "source_sha256"]

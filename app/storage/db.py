@@ -163,7 +163,7 @@ def find_day_raw_object(connection: psycopg.Connection, day: str) -> dict[str, A
         SELECT kind, garmin_activity_id, day::text, source_format, source_path, source_sha256, byte_size
         FROM raw_object
         WHERE kind = 'day' AND day = %s
-        ORDER BY created_at ASC, id ASC
+        ORDER BY created_at DESC, id DESC
         LIMIT 1
         """,
         (day,),
