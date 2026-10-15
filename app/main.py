@@ -213,11 +213,12 @@ def normalize(
         detail = "No archived file" if error.status_code == 404 else "Normalize failed"
         raise HTTPException(status_code=error.status_code, detail=detail)
     except BlobReadError:
-        logger.warning("Normalize failed")
-        raise HTTPException(status_code=502, detail="Normalize failed")
+        logger.warning("Normalize failed: BlobReadError")
+        raise HTTPException(status_code=502, detail="Normalize failed: BlobReadError")
     except Exception as error:
-        logger.warning("Normalize failed: %s", type(error).__name__)
-        raise HTTPException(status_code=502, detail="Normalize failed")
+        name = type(error).__name__
+        logger.warning("Normalize failed: %s", name)
+        raise HTTPException(status_code=502, detail=f"Normalize failed: {name}")
 
 
 def _require_service_secret(authorization: str | None) -> None:

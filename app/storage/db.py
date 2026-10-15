@@ -39,16 +39,43 @@ def connect() -> psycopg.Connection:
     return psycopg.connect(url)
 
 
+# One session lock for schema changes and activity parsing. Parallel parses
+# deadlock when several connections run ALTER TABLE at the same time.
+_NORMALIZE_LOCK = 74821001
+
+
+class normalize_lock:
+    """Wait until no other request is parsing an activity or changing the schema."""
+
+    def __init__(self, connection: psycopg.Connection) -> None:
+        self._connection = connection
+
+    def __enter__(self) -> "normalize_lock":
+        self._connection.execute("SELECT pg_advisory_lock(%s)", (_NORMALIZE_LOCK,))
+        return self
+
+    def __exit__(self, exc_type: Any, exc: Any, tb: Any) -> bool:
+        try:
+            if exc_type is not None:
+                self._connection.rollback()
+            self._connection.execute("SELECT pg_advisory_unlock(%s)", (_NORMALIZE_LOCK,))
+        except Exception:
+            if exc_type is None:
+                raise
+        return False
+
+
 def ensure_schema(connection: psycopg.Connection) -> None:
-    _execute_script(connection, _SCHEMA)
-    migrations = sorted(
-        (
-            Path(__file__).resolve().parents[2] / "prisma" / "migrations"
-        ).glob("*/migration.sql")
-    )
-    for migration in migrations:
-        _execute_script(connection, migration.read_text())
-    connection.commit()
+    with normalize_lock(connection):
+        _execute_script(connection, _SCHEMA)
+        migrations = sorted(
+            (
+                Path(__file__).resolve().parents[2] / "prisma" / "migrations"
+            ).glob("*/migration.sql")
+        )
+        for migration in migrations:
+            _execute_script(connection, migration.read_text())
+        connection.commit()
 
 
 def _execute_script(connection: psycopg.Connection, script: str) -> None:

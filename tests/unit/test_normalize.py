@@ -18,7 +18,7 @@ from app.normalize.load import normalize_activity
 from app.normalize.fit import NormalizeError, parse_activity_zip, parse_fit
 from app.normalize.store import _upsert_activity, apply_stored_power_zones
 from app.storage.blob import get_private
-from app.storage.db import _split_sql
+from app.storage.db import _split_sql, ensure_schema
 
 _FIT_EPOCH = datetime(1989, 12, 31, tzinfo=timezone.utc)
 
@@ -254,6 +254,8 @@ class NormalizeActivityTest(unittest.TestCase):
         connection = MagicMock()
         connection.__enter__.return_value = connection
         connection.__exit__.return_value = False
+        order: list[str] = []
+        connection.execute.side_effect = lambda statement, *_args, **_kwargs: order.append(statement)
         with patch("app.normalize.load.connect", return_value=connection):
             with patch("app.normalize.load.ensure_schema"):
                 with patch("app.normalize.load.latest_activity_raw_object", return_value=raw):
@@ -271,11 +273,28 @@ class NormalizeActivityTest(unittest.TestCase):
                                         "app.normalize.load.write_normalized",
                                         return_value={"activity": {"garmin_activity_id": 8}, "day": None},
                                     ) as write:
+                                        write.side_effect = lambda *_args, **_kwargs: order.append("write") or {
+                                            "activity": {"garmin_activity_id": 8},
+                                            "day": None,
+                                        }
                                         result = normalize_activity(8)
         download.assert_called_once_with("garmin/1/activity/8/abc.zip")
         self.assertEqual(write.call_args.kwargs["garmin_activity_id"], 8)
         self.assertIsNone(write.call_args.kwargs["day"])
         self.assertEqual(result["fit_file"], "8.fit")
+        self.assertEqual(order[0].split("(")[0], "SELECT pg_advisory_lock")
+        self.assertEqual(order[-1].split("(")[0], "SELECT pg_advisory_unlock")
+        self.assertLess(order.index("write"), order.index(order[-1]))
+
+
+class SchemaLockTest(unittest.TestCase):
+    def test_schema_update_waits_for_the_parse_lock(self) -> None:
+        connection = MagicMock()
+        ensure_schema(connection)
+        statements = [call.args[0] for call in connection.execute.call_args_list]
+        self.assertEqual(statements[0].split("(")[0], "SELECT pg_advisory_lock")
+        self.assertEqual(statements[-1].split("(")[0], "SELECT pg_advisory_unlock")
+        connection.commit.assert_called_once()
 
 
 class MigrationSqlTest(unittest.TestCase):
