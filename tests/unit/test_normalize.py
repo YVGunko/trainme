@@ -16,6 +16,7 @@ from app.main import app
 from app.normalize.day import day_metrics
 from app.normalize.load import normalize_activity
 from app.normalize.fit import NormalizeError, parse_activity_zip, parse_fit
+from app.normalize.store import _upsert_activity, apply_stored_power_zones
 from app.storage.blob import get_private
 from app.storage.db import _split_sql
 
@@ -483,6 +484,85 @@ def _fit_file(data: bytes) -> bytes:
     header = struct.pack("<BBHI4s", 14, 0x20, 2132, len(data), b".FIT")
     header += struct.pack("<H", compute_crc(header))
     return header + data + struct.pack("<H", compute_crc(data))
+
+
+class StoredHeartRateZoneTest(unittest.TestCase):
+    def test_fit_without_zones_keeps_stored_zeros(self) -> None:
+        connection = MagicMock()
+        stored = MagicMock()
+        stored.fetchone.return_value = (1983, 1029, 2, 0, 0)
+        inserted = MagicMock()
+        inserted.fetchone.return_value = (4,)
+        connection.execute.side_effect = [stored, inserted]
+        parsed = {
+            "sport": "cycling",
+            "sub_sport": "road",
+            "start_at": None,
+            "end_at": None,
+            "duration_sec": 3360,
+            "moving_duration_sec": 3360,
+            "elapsed_duration_sec": 3411,
+            "timezone_offset_min": 180,
+            "distance_m": 1000,
+            "avg_hr": 109,
+            "max_hr": 135,
+            "avg_speed": 11,
+            "calories": 486,
+            "aerobic_effect": 2.7,
+            "anaerobic_effect": 0.1,
+            "garmin_activity_load": 60,
+            "hr_zone_3_sec": 9,
+        }
+        _upsert_activity(
+            connection,
+            9,
+            parsed,
+            {"source_format": "zip", "source_path": "garmin/1/a.zip", "source_sha256": "abc"},
+        )
+        params = connection.execute.call_args_list[1].args[1]
+        names = (
+            "garmin_activity_id",
+            "sport",
+            "sub_sport",
+            "garmin_type_key",
+            "start_at",
+            "end_at",
+            "duration_sec",
+            "moving_duration_sec",
+            "elapsed_duration_sec",
+            "timezone_offset_min",
+            "distance_m",
+            "avg_hr",
+            "max_hr",
+            "avg_speed",
+            "calories",
+            "aerobic_effect",
+            "anaerobic_effect",
+            "training_effect_label",
+            "garmin_activity_load",
+            "hr_zone_1_sec",
+            "hr_zone_2_sec",
+            "hr_zone_3_sec",
+            "hr_zone_4_sec",
+            "hr_zone_5_sec",
+        )
+        row = dict(zip(names, params))
+        self.assertEqual(row["hr_zone_1_sec"], 1983.0)
+        self.assertEqual(row["hr_zone_3_sec"], 9)
+        self.assertEqual(row["hr_zone_4_sec"], 0.0)
+        self.assertEqual(row["hr_zone_5_sec"], 0.0)
+
+
+class StoredPowerZoneTest(unittest.TestCase):
+    def test_missing_fit_power_zones_keep_stored_zeros(self) -> None:
+        cycling = {"avg_power_w": 123.0, "power_zone_2_sec": 4}
+        apply_stored_power_zones(
+            cycling,
+            {"power_zone_1_sec": 2067.0, "power_zone_2_sec": 170.0, "power_zone_7_sec": 0.0},
+        )
+        self.assertEqual(cycling["power_zone_1_sec"], 2067.0)
+        self.assertEqual(cycling["power_zone_2_sec"], 4)
+        self.assertEqual(cycling["power_zone_7_sec"], 0.0)
 
 
 if __name__ == "__main__":

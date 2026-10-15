@@ -3,6 +3,8 @@ from typing import Any
 
 import psycopg
 
+from app.storage.db import load_hr_zone_seconds, load_power_zone_seconds
+
 _ACTIVITY_COLUMNS = (
     "garmin_activity_id",
     "sport",
@@ -84,6 +86,13 @@ _CYCLING_COLUMNS = (
     "avg_combined_pedal_smoothness",
     "total_ascent_m",
     "total_descent_m",
+    "power_zone_1_sec",
+    "power_zone_2_sec",
+    "power_zone_3_sec",
+    "power_zone_4_sec",
+    "power_zone_5_sec",
+    "power_zone_6_sec",
+    "power_zone_7_sec",
 )
 
 
@@ -162,6 +171,7 @@ def write_normalized(
     if cycling is None:
         connection.execute("DELETE FROM cycling_activity WHERE activity_id = %s", (activity_id,))
     else:
+        apply_stored_power_zones(cycling, load_power_zone_seconds(connection, garmin_activity_id))
         _upsert_keyed(connection, "cycling_activity", activity_id, _CYCLING_COLUMNS, cycling)
     set_count = _replace_sets(connection, activity_id, sets)
     written_fields: list[str] = []
@@ -226,8 +236,11 @@ def _upsert_activity(
         "source_path": source["source_path"],
         "source_sha256": source["source_sha256"],
     }
+    stored_zones = load_hr_zone_seconds(connection, garmin_activity_id)
     for zone in range(1, 6):
-        values[f"hr_zone_{zone}_sec"] = parsed.get(f"hr_zone_{zone}_sec")
+        key = f"hr_zone_{zone}_sec"
+        fit_value = parsed.get(key)
+        values[key] = fit_value if fit_value is not None else stored_zones.get(key)
     columns = ", ".join(_ACTIVITY_COLUMNS)
     placeholders = ", ".join(["%s"] * len(_ACTIVITY_COLUMNS))
     assignments = ", ".join(
@@ -248,6 +261,13 @@ def _upsert_activity(
     if row is None:
         raise RuntimeError("Activity insert did not return an id")
     return int(row[0])
+
+
+def apply_stored_power_zones(cycling: dict[str, Any], stored: dict[str, float]) -> None:
+    for zone in range(1, 8):
+        key = f"power_zone_{zone}_sec"
+        if cycling.get(key) is None and key in stored:
+            cycling[key] = stored[key]
 
 
 def _upsert_keyed(

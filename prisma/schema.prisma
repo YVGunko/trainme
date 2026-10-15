@@ -8,13 +8,26 @@ datasource db {
 }
 
 /// Garmin list fields and the user's own title and description.
-/// Re-parsing a FIT file does not change this row.
+/// Re-parsing a FIT file does not change the name or the user's text.
+/// Heart-rate zone seconds come from the activity list and fill activity when the FIT has none.
 model activity_meta {
   garmin_activity_id BigInt    @id
   garmin_name        String?
   title              String?
   description        String?
   start_local        DateTime? @db.Timestamp(6)
+  hr_zone_1_sec      Float?
+  hr_zone_2_sec      Float?
+  hr_zone_3_sec      Float?
+  hr_zone_4_sec      Float?
+  hr_zone_5_sec      Float?
+  power_zone_1_sec   Float?
+  power_zone_2_sec   Float?
+  power_zone_3_sec   Float?
+  power_zone_4_sec   Float?
+  power_zone_5_sec   Float?
+  power_zone_6_sec   Float?
+  power_zone_7_sec   Float?
   updated_at         DateTime  @default(now()) @updatedAt @db.Timestamptz(6)
 }
 
@@ -136,6 +149,13 @@ model cycling_activity {
   avg_combined_pedal_smoothness  Float?
   total_ascent_m                 Float?
   total_descent_m                Float?
+  power_zone_1_sec               Float?
+  power_zone_2_sec               Float?
+  power_zone_3_sec               Float?
+  power_zone_4_sec               Float?
+  power_zone_5_sec               Float?
+  power_zone_6_sec               Float?
+  power_zone_7_sec               Float?
   activity                       activity @relation(fields: [activity_id], references: [id], onDelete: Cascade)
 }
 

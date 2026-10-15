@@ -6,13 +6,15 @@ from unittest.mock import MagicMock, patch
 
 from fastapi.testclient import TestClient
 
-from app.storage.db import upsert_activity_meta
+from app.storage.db import save_hr_zone_seconds, save_power_zone_seconds, upsert_activity_meta
 from app.garmin.archive import (
     PeriodError,
     _activity_day,
     _store_bytes,
     archive_latest,
     archive_period,
+    list_hr_zone_seconds,
+    list_power_zone_seconds,
     parse_period,
 )
 from app.main import app
@@ -159,6 +161,22 @@ class ActivityMetaTest(unittest.TestCase):
         self.assertNotIn("title =", sql)
         self.assertNotIn("description =", sql)
 
+    def test_zone_seconds_update_the_activity_row_including_zero(self) -> None:
+        connection = MagicMock()
+        save_hr_zone_seconds(connection, 9, {"hr_zone_1_sec": 10.0, "hr_zone_5_sec": 0.0})
+        statements = [call.args[0] for call in connection.execute.call_args_list]
+        self.assertIn("UPDATE activity", statements[1])
+        self.assertEqual(connection.execute.call_args_list[1].args[1], (10.0, 0.0, 9))
+        connection.commit.assert_called_once()
+
+    def test_power_zone_seconds_update_the_cycling_row_including_zero(self) -> None:
+        connection = MagicMock()
+        save_power_zone_seconds(connection, 9, {"power_zone_1_sec": 2067.0, "power_zone_7_sec": 0.0})
+        statements = [call.args[0] for call in connection.execute.call_args_list]
+        self.assertIn("UPDATE cycling_activity", statements[1])
+        self.assertNotIn("UPDATE activity\n", statements[1])
+        self.assertEqual(connection.execute.call_args_list[1].args[1], (2067.0, 0.0, 9))
+
 
 class PeriodTest(unittest.TestCase):
     def test_period_rejects_more_than_14_days(self) -> None:
@@ -198,6 +216,83 @@ class PeriodTest(unittest.TestCase):
         self.assertEqual(result["downloaded_day_count"], 2)
         self.assertIn((9, "Morning", "2026-10-09 07:21:13"), remembered)
         self.assertIn((8, "Bike", "2026-10-07 18:47:45"), remembered)
+
+    def test_period_writes_zone_seconds_for_an_already_stored_activity(self) -> None:
+        client = _garmin_client([])
+        client.get_activities_by_date.return_value = [
+            {
+                "activityId": 9,
+                "activityName": "Bike",
+                "startTimeLocal": "2026-10-14 10:13:05",
+                "hrTimeInZone_1": 1983,
+                "hrTimeInZone_2": 1029,
+                "hrTimeInZone_3": 2,
+                "hrTimeInZone_4": 0,
+                "hrTimeInZone_5": 0,
+            }
+        ]
+        with _archive_patches(client, activity_ids={9}, days={"2026-10-14"}):
+            with patch("app.garmin.archive.upsert_activity_meta"):
+                with patch("app.garmin.archive.save_hr_zone_seconds") as save:
+                    archive_period("2026-10-14", "2026-10-14")
+        client.download_activity.assert_not_called()
+        save.assert_called_once()
+        self.assertEqual(save.call_args.args[1], 9)
+        self.assertEqual(
+            save.call_args.args[2],
+            {
+                "hr_zone_1_sec": 1983.0,
+                "hr_zone_2_sec": 1029.0,
+                "hr_zone_3_sec": 2.0,
+                "hr_zone_4_sec": 0.0,
+                "hr_zone_5_sec": 0.0,
+            },
+        )
+
+    def test_zone_seconds_keep_zero_and_skip_missing_values(self) -> None:
+        self.assertEqual(
+            list_hr_zone_seconds({"hrTimeInZone_1": 0, "hrTimeInZone_2": None, "hrTimeInZone_3": False}),
+            {"hr_zone_1_sec": 0.0},
+        )
+
+    def test_period_writes_power_zone_seconds_for_an_already_stored_ride(self) -> None:
+        client = _garmin_client([])
+        client.get_activities_by_date.return_value = [
+            {
+                "activityId": 9,
+                "activityName": "Bike",
+                "startTimeLocal": "2026-10-14 10:13:05",
+                "powerTimeInZone_1": 2067,
+                "powerTimeInZone_2": 170,
+                "powerTimeInZone_3": 187,
+                "powerTimeInZone_4": 137,
+                "powerTimeInZone_5": 249,
+                "powerTimeInZone_6": 517,
+                "powerTimeInZone_7": 33,
+            }
+        ]
+        with _archive_patches(client, activity_ids={9}, days={"2026-10-14"}):
+            with patch("app.garmin.archive.upsert_activity_meta"):
+                with patch("app.garmin.archive.save_power_zone_seconds") as save:
+                    archive_period("2026-10-14", "2026-10-14")
+        client.download_activity.assert_not_called()
+        save.assert_called_once()
+        self.assertEqual(
+            save.call_args.args[2],
+            {
+                "power_zone_1_sec": 2067.0,
+                "power_zone_2_sec": 170.0,
+                "power_zone_3_sec": 187.0,
+                "power_zone_4_sec": 137.0,
+                "power_zone_5_sec": 249.0,
+                "power_zone_6_sec": 517.0,
+                "power_zone_7_sec": 33.0,
+            },
+        )
+        self.assertEqual(
+            list_power_zone_seconds({"powerTimeInZone_7": 0, "powerTimeInZone_1": False}),
+            {"power_zone_7_sec": 0.0},
+        )
 
     def test_period_route_rejects_a_long_range(self) -> None:
         client = TestClient(app)

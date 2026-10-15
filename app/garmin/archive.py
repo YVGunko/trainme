@@ -21,6 +21,8 @@ from app.storage.db import (
     insert_raw_object,
     load_token,
     save_token,
+    save_hr_zone_seconds,
+    save_power_zone_seconds,
     upsert_activity_meta,
 )
 from app.storage.blob import put_private
@@ -55,6 +57,9 @@ def archive_latest() -> dict[str, Any]:
         activities = client.get_activities(0, _RECENT_ACTIVITY_LIMIT)
         if not isinstance(activities, list):
             raise ArchiveError("No recent activity")
+        for activity in activities:
+            if isinstance(activity, dict):
+                _remember_hr_zones(activity)
         target = _select_target(connection, activities)
 
     if target is None:
@@ -139,6 +144,7 @@ def archive_period(start: str, end: str) -> dict[str, Any]:
         if day < start_date.isoformat() or day > end_date.isoformat():
             continue
         _remember_activity(activity_id, _activity_name(activity), _activity_start(activity))
+        _remember_hr_zones(activity)
         with connect() as connection:
             existing = find_activity_raw_object(connection, activity_id)
         stored = False
@@ -317,6 +323,43 @@ def _remember_activity(
     with connect() as connection:
         ensure_schema(connection)
         upsert_activity_meta(connection, garmin_activity_id, garmin_name, start_local)
+
+
+def list_hr_zone_seconds(activity: dict[str, Any]) -> dict[str, float]:
+    found: dict[str, float] = {}
+    for zone in range(1, 6):
+        value = activity.get(f"hrTimeInZone_{zone}")
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            continue
+        found[f"hr_zone_{zone}_sec"] = float(value)
+    return found
+
+
+def list_power_zone_seconds(activity: dict[str, Any]) -> dict[str, float]:
+    found: dict[str, float] = {}
+    for zone in range(1, 8):
+        value = activity.get(f"powerTimeInZone_{zone}")
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            continue
+        found[f"power_zone_{zone}_sec"] = float(value)
+    return found
+
+
+def _remember_hr_zones(activity: dict[str, Any]) -> None:
+    try:
+        activity_id = _activity_id(activity)
+    except ArchiveError:
+        return
+    heart = list_hr_zone_seconds(activity)
+    power = list_power_zone_seconds(activity)
+    if not heart and not power:
+        return
+    with connect() as connection:
+        ensure_schema(connection)
+        if heart:
+            save_hr_zone_seconds(connection, activity_id, heart)
+        if power:
+            save_power_zone_seconds(connection, activity_id, power)
 
 
 def _activity_name(activity: dict[str, Any]) -> str | None:

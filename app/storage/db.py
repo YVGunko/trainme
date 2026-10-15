@@ -209,6 +209,121 @@ def upsert_activity_meta(
     connection.commit()
 
 
+_HR_ZONE_COLUMNS = tuple(f"hr_zone_{zone}_sec" for zone in range(1, 6))
+_POWER_ZONE_COLUMNS = tuple(f"power_zone_{zone}_sec" for zone in range(1, 8))
+
+
+def save_hr_zone_seconds(
+    connection: psycopg.Connection,
+    garmin_activity_id: int,
+    zones: dict[str, float],
+) -> None:
+    columns = [key for key in _HR_ZONE_COLUMNS if key in zones]
+    if not columns:
+        return
+    values = [zones[key] for key in columns]
+    column_sql = ", ".join(columns)
+    placeholders = ", ".join(["%s"] * len(columns))
+    assignments = ", ".join(f"{column} = EXCLUDED.{column}" for column in columns)
+    connection.execute(
+        f"""
+        INSERT INTO activity_meta (garmin_activity_id, {column_sql})
+        VALUES (%s, {placeholders})
+        ON CONFLICT (garmin_activity_id) DO UPDATE
+        SET {assignments},
+            updated_at = now()
+        """,
+        (garmin_activity_id, *values),
+    )
+    activity_assignments = ", ".join(f"{column} = %s" for column in columns)
+    connection.execute(
+        f"""
+        UPDATE activity
+        SET {activity_assignments}
+        WHERE garmin_activity_id = %s
+        """,
+        (*values, garmin_activity_id),
+    )
+    connection.commit()
+
+
+def save_power_zone_seconds(
+    connection: psycopg.Connection,
+    garmin_activity_id: int,
+    zones: dict[str, float],
+) -> None:
+    columns = [key for key in _POWER_ZONE_COLUMNS if key in zones]
+    if not columns:
+        return
+    values = [zones[key] for key in columns]
+    column_sql = ", ".join(columns)
+    placeholders = ", ".join(["%s"] * len(columns))
+    assignments = ", ".join(f"{column} = EXCLUDED.{column}" for column in columns)
+    connection.execute(
+        f"""
+        INSERT INTO activity_meta (garmin_activity_id, {column_sql})
+        VALUES (%s, {placeholders})
+        ON CONFLICT (garmin_activity_id) DO UPDATE
+        SET {assignments},
+            updated_at = now()
+        """,
+        (garmin_activity_id, *values),
+    )
+    cycling_assignments = ", ".join(f"{column} = %s" for column in columns)
+    connection.execute(
+        f"""
+        UPDATE cycling_activity
+        SET {cycling_assignments}
+        WHERE activity_id = (
+            SELECT id FROM activity WHERE garmin_activity_id = %s
+        )
+        """,
+        (*values, garmin_activity_id),
+    )
+    connection.commit()
+
+
+def load_power_zone_seconds(
+    connection: psycopg.Connection, garmin_activity_id: int
+) -> dict[str, float]:
+    quoted = ", ".join(_POWER_ZONE_COLUMNS)
+    row = connection.execute(
+        f"""
+        SELECT {quoted}
+        FROM activity_meta
+        WHERE garmin_activity_id = %s
+        """,
+        (garmin_activity_id,),
+    ).fetchone()
+    if row is None:
+        return {}
+    found: dict[str, float] = {}
+    for column, value in zip(_POWER_ZONE_COLUMNS, row):
+        if value is not None:
+            found[column] = float(value)
+    return found
+
+
+def load_hr_zone_seconds(
+    connection: psycopg.Connection, garmin_activity_id: int
+) -> dict[str, float]:
+    row = connection.execute(
+        """
+        SELECT hr_zone_1_sec, hr_zone_2_sec, hr_zone_3_sec, hr_zone_4_sec, hr_zone_5_sec
+        FROM activity_meta
+        WHERE garmin_activity_id = %s
+        """,
+        (garmin_activity_id,),
+    ).fetchone()
+    if row is None:
+        return {}
+    found: dict[str, float] = {}
+    for zone, value in enumerate(row, start=1):
+        if value is not None:
+            found[f"hr_zone_{zone}_sec"] = float(value)
+    return found
+
+
 def load_activity_meta(
     connection: psycopg.Connection, garmin_activity_id: int
 ) -> dict[str, Any] | None:
