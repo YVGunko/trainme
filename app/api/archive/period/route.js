@@ -1,5 +1,4 @@
-import { publishActivityParses } from '@/server/queue';
-import { callRender } from '@/server/render';
+import { archivePeriodAndParse } from '@/server/archive-run';
 import { requireUser } from '@/server/session';
 
 export const runtime = 'nodejs';
@@ -20,8 +19,7 @@ export async function POST(request) {
         { status: 400 }
       );
     }
-    const result = await callRender('/archive/period', { start, end });
-    const queue = await publishActivityParses(result);
+    const { result, queue } = await archivePeriodAndParse(start, end);
     return Response.json({ ok: true, result, queue });
   } catch (error) {
     if (error?.message === 'unauthorized') {
