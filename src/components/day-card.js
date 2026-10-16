@@ -11,13 +11,14 @@ import {
   SCORE_WORDS,
 } from '@/lib/wellness';
 
-export function DayCard() {
+export function DayCard({ onDirtyChange, onSaved }) {
   const [date, setDate] = useState('');
   const [loadedDate, setLoadedDate] = useState('');
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [garmin, setGarmin] = useState(undefined);
   const [form, setForm] = useState(emptyWellnessForm);
+  const [savedForm, setSavedForm] = useState(emptyWellnessForm);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
   const dateRef = useRef('');
@@ -37,6 +38,7 @@ export function DayCard() {
     setLoadedDate('');
     setGarmin(undefined);
     setForm(emptyWellnessForm());
+    setSavedForm(emptyWellnessForm());
 
     async function load() {
       try {
@@ -47,8 +49,10 @@ export function DayCard() {
           setError(data.error || 'Could not load this day.');
           return;
         }
+        const nextForm = formFromWellness(data.wellness);
         setGarmin(data.garmin);
-        setForm(formFromWellness(data.wellness));
+        setForm(nextForm);
+        setSavedForm(nextForm);
         setLoadedDate(date);
       } catch (loadError) {
         if (!active || loadError?.name === 'AbortError') return;
@@ -64,6 +68,10 @@ export function DayCard() {
       controller.abort();
     };
   }, [date]);
+
+  useEffect(() => {
+    onDirtyChange?.(JSON.stringify(form) !== JSON.stringify(savedForm));
+  }, [form, savedForm, onDirtyChange]);
 
   function setScore(field, value) {
     setForm((current) => ({ ...current, [field]: value }));
@@ -88,9 +96,12 @@ export function DayCard() {
         setError(data.error || 'Could not save.');
         return;
       }
+      const nextForm = formFromWellness(data.wellness);
       setGarmin(data.garmin);
-      setForm(formFromWellness(data.wellness));
+      setForm(nextForm);
+      setSavedForm(nextForm);
       setMessage(data.wellness ? 'Saved.' : 'Cleared.');
+      onSaved?.(savedDate, data.wellness);
     } catch {
       if (dateRef.current !== savedDate) return;
       setError('Could not save.');
@@ -103,9 +114,7 @@ export function DayCard() {
   const lines = garminLines(garmin);
 
   return (
-    <section className="day-card">
-      <h2>Day</h2>
-      <form onSubmit={onSubmit}>
+    <form className="editor-form" onSubmit={onSubmit}>
         <label>
           Date
           <input
@@ -181,6 +190,5 @@ export function DayCard() {
           {error ? <p className="error">{error}</p> : null}
         </div>
       </form>
-    </section>
   );
 }

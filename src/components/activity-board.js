@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { filterActivities, sortActivities, sortLabel, toggleSort } from '@/lib/table';
+import { filterActivities, pageNumbers, pageOf, sortActivities, sortLabel, toggleSort } from '@/lib/table';
 
 const COLUMNS = [
   { id: 'when', label: 'Дата' },
@@ -13,11 +13,10 @@ const COLUMNS = [
   { id: 'parsed', label: 'Разбор' },
 ];
 
-export function ActivityBoard({ activities, onRefresh }) {
+export function ActivityBoard({ activities, editingId, onEdit, onRefresh }) {
   const [query, setQuery] = useState('');
+  const [page, setPage] = useState(1);
   const [sorting, setSorting] = useState([{ id: 'when', desc: true }]);
-  const [drafts, setDrafts] = useState({});
-  const [pendingId, setPendingId] = useState('');
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const [start, setStart] = useState('');
@@ -30,74 +29,7 @@ export function ActivityBoard({ activities, onRefresh }) {
     () => sortActivities(filterActivities(activities, query), sorting),
     [activities, query, sorting]
   );
-
-  function draftValue(row, field, fallback) {
-    const draft = drafts[row.garminActivityId];
-    if (draft && Object.prototype.hasOwnProperty.call(draft, field)) return draft[field];
-    return fallback;
-  }
-
-  function setDraft(id, field, value) {
-    setDrafts((current) => ({
-      ...current,
-      [id]: { ...current[id], [field]: value },
-    }));
-  }
-
-  async function saveField(row, field, value) {
-    const shownTitle = row.title === '—' ? '' : row.title;
-    const titleText = (field === 'title' ? value : draftValue(row, 'title', shownTitle)).trim();
-    const descriptionText = (
-      field === 'description' ? value : draftValue(row, 'description', row.description)
-    ).trim();
-    const title = !titleText || titleText === '—' || titleText === row.fallbackTitle ? null : titleText;
-    const description = descriptionText || null;
-    const storedTitle = row.customTitle || null;
-    const storedDescription = row.description || null;
-    if (title === storedTitle && description === storedDescription) return;
-
-    setError('');
-    try {
-      const response = await fetch(`/api/activities/${row.garminActivityId}/note`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ title, description }),
-      });
-      const data = await response.json();
-      if (!response.ok || !data.ok) {
-        setError(data.error || 'Не удалось сохранить');
-        return;
-      }
-      setDrafts((current) => {
-        const next = { ...current };
-        delete next[row.garminActivityId];
-        return next;
-      });
-      onRefresh();
-    } catch {
-      setError('Не удалось сохранить');
-    }
-  }
-
-  async function parseActivity(row) {
-    setPendingId(row.garminActivityId);
-    setError('');
-    setMessage('');
-    try {
-      const response = await fetch(`/api/activities/${row.garminActivityId}/normalize`, { method: 'POST' });
-      const data = await response.json();
-      if (!response.ok || !data.ok) {
-        setError(data.error || 'Разбор не удался');
-        return;
-      }
-      setMessage('Разбор записан');
-      onRefresh();
-    } catch {
-      setError('Разбор не удался');
-    } finally {
-      setPendingId('');
-    }
-  }
+  const view = useMemo(() => pageOf(visible, page), [visible, page]);
 
   async function loadPeriod(event) {
     event.preventDefault();
@@ -191,7 +123,14 @@ export function ActivityBoard({ activities, onRefresh }) {
       </form>
       <label className="search">
         Поиск по названию и описанию
-        <input value={query} onChange={(event) => setQuery(event.target.value)} type="search" />
+        <input
+          value={query}
+          onChange={(event) => {
+            setQuery(event.target.value);
+            setPage(1);
+          }}
+          type="search"
+        />
       </label>
       <p className="muted" aria-live="polite">
         Сортировка: {sortLabel(sorting)}. Обычный щелчок выбирает одну колонку, Shift добавляет следующую.
@@ -216,9 +155,10 @@ export function ActivityBoard({ activities, onRefresh }) {
                       <button
                         className="sort-button"
                         type="button"
-                        onClick={(event) =>
-                          setSorting((current) => toggleSort(current, column.id, event.shiftKey))
-                        }
+                        onClick={(event) => {
+                          setSorting((current) => toggleSort(current, column.id, event.shiftKey));
+                          setPage(1);
+                        }}
                       >
                         {column.label}
                         {active ? ` ${active.desc ? '↓' : '↑'}${sorting.length > 1 ? index + 1 : ''}` : ''}
@@ -230,40 +170,21 @@ export function ActivityBoard({ activities, onRefresh }) {
               </tr>
             </thead>
             <tbody>
-              {visible.map((row) => (
-                <tr key={row.garminActivityId}>
+              {view.rows.map((row) => (
+                <tr
+                  key={row.garminActivityId}
+                  className={editingId === row.garminActivityId ? 'is-selected' : undefined}
+                >
                   <td>{row.when}</td>
-                  <td>
-                    <input
-                      aria-label={`Название ${row.garminActivityId}`}
-                      placeholder={row.fallbackTitle || '—'}
-                      value={draftValue(row, 'title', row.title === '—' ? '' : row.title)}
-                      onChange={(event) => setDraft(row.garminActivityId, 'title', event.target.value)}
-                      onBlur={(event) => saveField(row, 'title', event.target.value)}
-                    />
-                  </td>
-                  <td>
-                    <input
-                      aria-label={`Описание ${row.garminActivityId}`}
-                      value={draftValue(row, 'description', row.description)}
-                      onChange={(event) =>
-                        setDraft(row.garminActivityId, 'description', event.target.value)
-                      }
-                      onBlur={(event) => saveField(row, 'description', event.target.value)}
-                    />
-                  </td>
+                  <td>{row.title}</td>
+                  <td>{row.description || '—'}</td>
                   <td>{row.sport}</td>
                   <td>{row.duration}</td>
                   <td>{row.distance}</td>
                   <td>{row.parsed ? 'да' : 'нет'}</td>
                   <td>
-                    <button
-                      className="secondary"
-                      type="button"
-                      disabled={pendingId === row.garminActivityId}
-                      onClick={() => parseActivity(row)}
-                    >
-                      {pendingId === row.garminActivityId ? 'Разбор...' : 'Разобрать'}
+                    <button className="secondary" type="button" onClick={() => onEdit(row.garminActivityId)}>
+                      Edit
                     </button>
                   </td>
                 </tr>
@@ -271,6 +192,48 @@ export function ActivityBoard({ activities, onRefresh }) {
             </tbody>
           </table>
         </div>
+      ) : null}
+      {view.pageCount > 1 ? (
+        <nav className="pager" aria-label="Pages">
+          <p className="muted">
+            {view.from}–{view.to} of {view.total}
+          </p>
+          <div className="pager-controls">
+            <button
+              className="secondary"
+              type="button"
+              disabled={view.page === 1}
+              onClick={() => setPage(view.page - 1)}
+            >
+              Previous
+            </button>
+            {pageNumbers(view.page, view.pageCount).map((item, index) =>
+              item === '…' ? (
+                <span key={`gap-${index}`} className="pager-gap">
+                  …
+                </span>
+              ) : (
+                <button
+                  key={item}
+                  type="button"
+                  className={item === view.page ? undefined : 'secondary'}
+                  aria-current={item === view.page ? 'page' : undefined}
+                  onClick={() => setPage(item)}
+                >
+                  {item}
+                </button>
+              )
+            )}
+            <button
+              className="secondary"
+              type="button"
+              disabled={view.page === view.pageCount}
+              onClick={() => setPage(view.page + 1)}
+            >
+              Next
+            </button>
+          </div>
+        </nav>
       ) : null}
     </section>
   );

@@ -1,3 +1,37 @@
+export const PAGE_SIZE = 5;
+
+export function pageOf(rows, page, size = PAGE_SIZE) {
+  const total = rows.length;
+  const pageCount = Math.max(1, Math.ceil(total / size) || 1);
+  const current = Math.min(Math.max(1, Number(page) || 1), pageCount);
+  const start = (current - 1) * size;
+  const slice = rows.slice(start, start + size);
+  return {
+    rows: slice,
+    page: current,
+    pageCount,
+    total,
+    from: total === 0 ? 0 : start + 1,
+    to: start + slice.length,
+  };
+}
+
+export function pageNumbers(page, pageCount) {
+  if (pageCount <= 7) return Array.from({ length: pageCount }, (_, index) => index + 1);
+  const wanted = [1, pageCount, page - 1, page, page + 1].filter(
+    (number) => number >= 1 && number <= pageCount
+  );
+  const unique = [...new Set(wanted)].sort((left, right) => left - right);
+  const numbers = [];
+  let previous = 0;
+  for (const number of unique) {
+    if (previous && number - previous > 1) numbers.push('…');
+    numbers.push(number);
+    previous = number;
+  }
+  return numbers;
+}
+
 export function filterActivities(rows, query) {
   const needle = String(query || '').trim().toLowerCase();
   if (!needle) return rows;

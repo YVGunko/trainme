@@ -6,6 +6,7 @@ import {
   formatMetricNumber,
   formatSleep,
   garminLines,
+  dayNeedsCheckIn,
   isBlankWellness,
   localCalendarDate,
   parseCalendarDate,
@@ -70,6 +71,9 @@ test('wellness scores are empty or integers 1 through 4', () => {
   assert.equal(parseWellness({ note: 'x'.repeat(4000) }).note.length, 4000);
   assert.equal(parseWellness({ note: '   ' }).note, null);
   assert.equal(isBlankWellness(parseWellness({})), true);
+  assert.equal(dayNeedsCheckIn(null), true);
+  assert.equal(dayNeedsCheckIn(parseWellness({})), true);
+  assert.equal(dayNeedsCheckIn(parseWellness({ fatigue: 1 })), false);
   assert.throws(() => parseWellness(['fatigue']), /Could not save/);
 });
 

@@ -93,6 +93,11 @@ export function isBlankWellness(row) {
   return SCORE_FIELDS.every((field) => row[field] == null) && row.note == null;
 }
 
+export function dayNeedsCheckIn(wellness) {
+  if (wellness == null) return true;
+  return isBlankWellness(wellness);
+}
+
 export function emptyWellnessForm() {
   const form = { note: '' };
   for (const field of SCORE_FIELDS) form[field] = null;
