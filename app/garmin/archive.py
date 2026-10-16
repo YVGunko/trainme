@@ -8,6 +8,7 @@ from typing import Any
 from garminconnect import (
     Garmin,
     GarminConnectAuthenticationError,
+    GarminConnectTooManyRequestsError,
 )
 
 from app.garmin.client import GarminNotConfigured
@@ -24,6 +25,7 @@ from app.storage.db import (
     insert_raw_object,
     load_token,
     save_token,
+    stored_days,
     save_hr_zone_seconds,
     save_power_zone_seconds,
     upsert_activity_meta,
@@ -44,6 +46,42 @@ class PeriodError(ArchiveError):
 # Newest page Garmin returns in one activities request. The library default is 20.
 _RECENT_ACTIVITY_LIMIT = 20
 _MAX_PERIOD_DAYS = 14
+
+
+def refresh_stored_days() -> dict[str, Any]:
+    """Re-read daily Garmin metrics for each day already stored in Postgres."""
+    logging.getLogger("garminconnect").setLevel(logging.ERROR)
+    key_material = os.environ.get("TOKEN_ENCRYPTION_KEY", "")
+    if not key_material:
+        raise EncryptionKeyMissing
+    with connect() as connection:
+        ensure_schema(connection)
+        saved_token = load_token(connection, key_material)
+        days = stored_days(connection)
+    client = _login(saved_token)
+    with connect() as connection:
+        save_token(connection, client.client.dumps(), client.profile_id, key_material)
+    user_id = client.profile_id if isinstance(client.profile_id, int) else "unknown"
+    refreshed: list[dict[str, Any]] = []
+    failed: list[dict[str, str]] = []
+    for day in days:
+        try:
+            downloaded = _archive_day(client, user_id, day)
+        except GarminConnectTooManyRequestsError:
+            failed.append({"day": day, "error": "GarminConnectTooManyRequestsError"})
+            break
+        except Exception as error:
+            logger.warning("Day refresh failed: %s %s", day, type(error).__name__)
+            failed.append({"day": day, "error": type(error).__name__})
+            continue
+        refreshed.append({"day": day, "sleep_downloaded": downloaded == 1})
+        logger.info("refreshed %s sleep_downloaded=%s", day, downloaded == 1)
+    return {
+        "day_count": len(days),
+        "refreshed_count": len(refreshed),
+        "failed": failed,
+        "days": refreshed,
+    }
 
 
 def archive_latest() -> dict[str, Any]:

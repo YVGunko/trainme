@@ -14,6 +14,7 @@ from app.garmin.archive import (
     archive_latest,
     archive_period,
     list_hr_zone_seconds,
+    refresh_stored_days,
     list_power_zone_seconds,
     parse_period,
 )
@@ -400,6 +401,22 @@ class PeriodTest(unittest.TestCase):
         self.assertEqual(fields["monthly_load_anaerobic"], 112.59972)
         self.assertNotIn("running_tolerance", fields)
         self.assertNotIn("running_impact_load", fields)
+
+    def test_refresh_rewrites_stored_days_without_activity_downloads(self) -> None:
+        client = _garmin_client([])
+        with _archive_patches(client, activity_ids=set(), days=set()):
+            with patch("app.garmin.archive.stored_days", return_value=["2026-10-14", "2026-10-15"]):
+                with patch("app.garmin.archive._archive_day", return_value=0) as archive_day:
+                    result = refresh_stored_days()
+        client.get_activities_by_date.assert_not_called()
+        client.download_activity.assert_not_called()
+        self.assertEqual(
+            [call.args[2] for call in archive_day.call_args_list],
+            ["2026-10-14", "2026-10-15"],
+        )
+        self.assertEqual(result["day_count"], 2)
+        self.assertEqual(result["refreshed_count"], 2)
+        self.assertEqual(result["failed"], [])
 
 
 def _garmin_client(activities: list[dict]) -> MagicMock:

@@ -157,6 +157,18 @@ def find_activity_raw_object(
     return _raw_row(row)
 
 
+def stored_days(connection: psycopg.Connection) -> list[str]:
+    rows = connection.execute(
+        """
+        SELECT DISTINCT day::text
+        FROM raw_object
+        WHERE kind = 'day' AND day IS NOT NULL
+        ORDER BY 1
+        """
+    ).fetchall()
+    return [row[0] for row in rows]
+
+
 def find_day_raw_object(connection: psycopg.Connection, day: str) -> dict[str, Any] | None:
     row = connection.execute(
         """
