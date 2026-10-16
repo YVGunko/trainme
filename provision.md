@@ -91,6 +91,13 @@ database model;
 AI prompts;
 web UI;
 workout DSL.
+2.4 Language
+
+User-facing copy is English.
+
+Score words, buttons, empty states, and errors shown to the user are English. Do not add a Russian label for a score or a screen.
+
+The activity list is still Russian. That screen is not part of the day card. New copy, including the day card, is English.
 3. Current Technical Direction
 Backend
 
@@ -473,7 +480,7 @@ running_dynamics
 Do not prematurely normalize every Garmin metric into a dedicated table.
 
 Daily state
-daily_metrics is one row per training day. date is that day in the user's timezone.
+daily_metrics is one row per training day. date is the calendar date used when that day was archived. No timezone column is stored.
 
 Sleep columns are the main sleep. Extra sleep sessions stay in the raw JSON.
 
@@ -508,20 +515,97 @@ Garmin metrics are inputs, not unquestionable truth.
 garmin_acwr, the monthly load components, and running_tolerance are Garmin inputs. They do not define training state.
 
 Subjective data
+
+One training day has one wellness row. The key is the calendar date, the same date as daily_metrics.
+
+The row is one card compiled from the Intervals.icu wellness entry and the TrainingPeaks day metrics. Both products keep one record per date, ask once, and let the user change that record. The next date starts empty.
+
 subjective_log
 - date
 - fatigue
-- sleep_quality
 - soreness
-- pain
-- pain_location
+- mood
 - motivation
-- rpe
-- notes
+- stress
+- sleep_quality
+- injury
+- illness
+- note
+- updated_at
+
+date is the primary key. There is no second row for the same date.
+
+Each score is an integer 1, 2, 3, or 4, or empty. Empty means unanswered. On every field, 1 is the best step and 4 is the worst step. The screen shows four fixed words. The database stores the number, not the word.
+
+Words, from 1 to 4:
+
+fatigue: None, Low, Average, High
+soreness: None, Low, Average, High
+stress: None, Low, Average, High
+injury: None, Low, Average, High
+illness: None, Low, Average, High
+sleep_quality: Excellent, Good, Average, Poor
+mood: Excellent, Good, Average, Poor
+motivation: High, Normal, Low, Very low
+
+note is a separate optional text field, at most 4000 characters. It is not a score. It is not an activity title or description.
+
+A save replaces the whole row. An empty control clears that score or the note. If every score and the note are empty, the row is removed. A new date does not copy the previous row. Logging a workout does not clear the wellness row.
 
 Subjective data is first-class data.
 
 Do not replace subjective information with Garmin-derived metrics.
+
+Garmin archive and FIT parsing must not write subjective_log.
+
+injury and illness on this card are daily marks. They do not create a training_constraint and they do not diagnose.
+
+Day card
+
+The logged-in home page shows one day card above the activity list. A date control selects the card. The default date is the browser's local calendar date. The server clock is not used. Any calendar date is allowed, including a rest day with no workout.
+
+The card has two blocks.
+
+The Garmin block is read-only. It reads daily_metrics for that date and shows only a value the day parser actually wrote. A null column is omitted. The columns are:
+
+sleep_duration_sec, shown as hours and minutes
+sleep_score
+overnight_hrv
+resting_hr
+hrv_status
+readiness_score
+readiness_level
+training_status
+garmin_load_acute
+garmin_load_chronic
+garmin_acwr
+vo2max_generic
+vo2max_cycling
+monthly_load_aerobic_low
+monthly_load_aerobic_high
+monthly_load_anaerobic
+
+hrv_status, readiness_level, and training_status are shown as the stored Garmin text. This card does not translate those phrases.
+
+running_impact_load and running_tolerance are not shown. The day parser does not write them yet. Stress, body battery, and sleep-stage series stay in the raw JSON and are not shown.
+
+If that date has no daily_metrics row, the Garmin block says the day is not loaded. The wellness form still saves. A missing workout does not block the save.
+
+The wellness block edits the eight scores and the note. If a row exists, the form shows the stored words. The user can change them and save again.
+
+The web app reads and writes subjective_log for the logged-in user. The Garmin service does not.
+
+Assumptions for this card:
+
+The two products do not use one scale direction. Intervals.icu stores every subjective mark as 1 = good and 4 = bad. TrainingPeaks uses longer word lists, and those lists run toward "more" of the named thing, so sleep quality runs toward better while fatigue runs toward worse. This card follows the Intervals direction for every field: 1 is best, 4 is worst. The TrainingPeaks lists are collapsed to the four words above.
+
+pain and pain_location are not on this card. Injury is the daily mark for how the body feels. rpe is not on this card.
+
+No user timezone is stored. The date is the calendar date chosen in the browser. It joins daily_metrics on that same date. Those Garmin dates are the calendar dates already used when a day was archived.
+
+The app has one user, so subjective_log has no user id. That matches daily_metrics.
+
+This change does not add a calendar, a reminder, or a training-state calculation. The card is the daily question. An existing row is the answer being edited, not a new question.
 
 Constraints
 training_constraint
@@ -590,7 +674,7 @@ recovery
 sleep
 HRV
 fatigue
-pain
+injury
 local constraints
 available time
 planned training
@@ -781,11 +865,11 @@ Do not rely on timestamps alone for identity.
 
 Store timestamps in UTC.
 
-Keep the user's timezone separately.
-
-Calendar/training-day calculations must use the user's configured timezone.
-
 Never use server local time for training-day logic.
+
+No user timezone is stored. A training day is a calendar date.
+
+The day card uses the browser's local calendar date. A Garmin daily row uses the calendar date stored when that day was archived. The card joins them on that date.
 
 20. Security
 
@@ -930,7 +1014,7 @@ dashboard;
 recent activities;
 training state;
 calendar;
-subjective input;
+day card with Garmin daily metrics and the wellness row;
 constraints;
 AI recommendation;
 workout review;
@@ -949,7 +1033,7 @@ Web
 dashboard;
 activity list/detail;
 training calendar;
-subjective daily input;
+day card with Garmin daily metrics and the wellness row;
 constraints;
 recommendation screen;
 workout approval;
@@ -984,7 +1068,7 @@ microservice decomposition;
 complex event sourcing.
 28. Medical / Injury Boundary
 
-The application may use user-entered pain and physical constraints to modify training recommendations.
+The application may use the daily injury mark and physical constraints to modify training recommendations.
 
 It must NOT:
 

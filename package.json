@@ -6,7 +6,7 @@
     "dev": "next dev",
     "build": "node scripts/with-database-url.mjs generate && next build",
     "start": "next start",
-    "test": "node --test tests/auth.test.js tests/format.test.js tests/table.test.js tests/activity-queue.test.js",
+    "test": "node --test tests/auth.test.js tests/format.test.js tests/table.test.js tests/activity-queue.test.js tests/wellness.test.js",
     "prisma:generate": "node scripts/with-database-url.mjs generate",
     "postinstall": "node scripts/with-database-url.mjs generate"
   },

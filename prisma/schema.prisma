@@ -227,3 +227,18 @@ model daily_metrics {
   source_path               String
   source_sha256             String
 }
+
+/// One wellness card per calendar day. A score is empty or 1 (best) through 4 (worst).
+model subjective_log {
+  date          DateTime @id @db.Date
+  fatigue       Int?     @db.SmallInt
+  soreness      Int?     @db.SmallInt
+  mood          Int?     @db.SmallInt
+  motivation    Int?     @db.SmallInt
+  stress        Int?     @db.SmallInt
+  sleep_quality Int?     @db.SmallInt
+  injury        Int?     @db.SmallInt
+  illness       Int?     @db.SmallInt
+  note          String?
+  updated_at    DateTime @default(now()) @updatedAt @db.Timestamptz(6)
+}

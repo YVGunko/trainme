@@ -170,6 +170,118 @@ tbody tr:last-child td {
   border-bottom: 0;
 }
 
+.day-card {
+  display: grid;
+  gap: 16px;
+  margin-bottom: 28px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--card);
+}
+
+.day-card form {
+  display: grid;
+  gap: 18px;
+}
+
+.day-card h2,
+.day-card h3 {
+  margin: 0;
+}
+
+.day-card h2 {
+  font-size: 1.2rem;
+}
+
+.day-card h3 {
+  margin-bottom: 8px;
+  font-size: 0.95rem;
+}
+
+.day-card input[type='date'] {
+  max-width: 220px;
+}
+
+.day-card textarea {
+  width: 100%;
+  min-height: 88px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px 12px;
+  color: var(--text);
+  background: #fff;
+  font: inherit;
+}
+
+.wellness {
+  display: grid;
+  gap: 14px;
+}
+
+.score {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.score legend {
+  padding: 0;
+  color: var(--muted);
+  font-size: 0.92rem;
+}
+
+.choices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+}
+
+.choices label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text);
+}
+
+.choices input {
+  width: auto;
+}
+
+.metrics {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 10px 16px;
+  margin: 0;
+}
+
+.metrics div {
+  display: grid;
+  gap: 2px;
+}
+
+.metrics dt {
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.metrics dd {
+  margin: 0;
+}
+
+.day-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+}
+
+.day-actions p {
+  margin: 0;
+}
+
 @media (max-width: 640px) {
   main {
     width: min(100% - 24px, 960px);

@@ -1,5 +1,6 @@
 import { cookies } from 'next/headers';
 import { ActivityScreen } from '@/components/activity-screen';
+import { DayCard } from '@/components/day-card';
 import { LoginForm } from '@/components/login-form';
 import { userFromToken } from '@/server/session';
 import { listActivities } from '@/server/activities';
@@ -50,6 +51,7 @@ export default async function HomePage() {
           </button>
         </form>
       </header>
+      <DayCard />
       {listError ? <p className="error">{listError}</p> : null}
       <ActivityScreen activities={activities} />
     </main>

@@ -1,0 +1,22 @@
+CREATE TABLE IF NOT EXISTS subjective_log (
+    date date PRIMARY KEY,
+    fatigue smallint,
+    soreness smallint,
+    mood smallint,
+    motivation smallint,
+    stress smallint,
+    sleep_quality smallint,
+    injury smallint,
+    illness smallint,
+    note text,
+    updated_at timestamptz NOT NULL DEFAULT now(),
+    CONSTRAINT subjective_log_fatigue_check CHECK (fatigue IS NULL OR (fatigue BETWEEN 1 AND 4)),
+    CONSTRAINT subjective_log_soreness_check CHECK (soreness IS NULL OR (soreness BETWEEN 1 AND 4)),
+    CONSTRAINT subjective_log_mood_check CHECK (mood IS NULL OR (mood BETWEEN 1 AND 4)),
+    CONSTRAINT subjective_log_motivation_check CHECK (motivation IS NULL OR (motivation BETWEEN 1 AND 4)),
+    CONSTRAINT subjective_log_stress_check CHECK (stress IS NULL OR (stress BETWEEN 1 AND 4)),
+    CONSTRAINT subjective_log_sleep_quality_check CHECK (sleep_quality IS NULL OR (sleep_quality BETWEEN 1 AND 4)),
+    CONSTRAINT subjective_log_injury_check CHECK (injury IS NULL OR (injury BETWEEN 1 AND 4)),
+    CONSTRAINT subjective_log_illness_check CHECK (illness IS NULL OR (illness BETWEEN 1 AND 4)),
+    CONSTRAINT subjective_log_note_check CHECK (note IS NULL OR char_length(note) <= 4000)
+);
