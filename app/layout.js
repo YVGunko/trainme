@@ -5,6 +5,13 @@ export const metadata = {
   description: 'Загруженные и разобранные тренировки',
 };
 
+export const viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  viewportFit: 'cover',
+  interactiveWidget: 'resizes-content',
+};
+
 export default function RootLayout({ children }) {
   return (
     <html lang="ru">

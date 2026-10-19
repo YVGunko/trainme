@@ -9,18 +9,19 @@ import {
   SCORE_FIELDS,
   SCORE_LABELS,
   SCORE_WORDS,
+  splitGarminLines,
 } from '@/lib/wellness';
 
-export function DayCard({ onDirtyChange, onSaved }) {
+export function DayCard({ onSaved }) {
   const [date, setDate] = useState('');
   const [loadedDate, setLoadedDate] = useState('');
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [garmin, setGarmin] = useState(undefined);
   const [form, setForm] = useState(emptyWellnessForm);
-  const [savedForm, setSavedForm] = useState(emptyWellnessForm);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
+  const [showAll, setShowAll] = useState(false);
   const dateRef = useRef('');
 
   useEffect(() => {
@@ -38,7 +39,6 @@ export function DayCard({ onDirtyChange, onSaved }) {
     setLoadedDate('');
     setGarmin(undefined);
     setForm(emptyWellnessForm());
-    setSavedForm(emptyWellnessForm());
 
     async function load() {
       try {
@@ -50,10 +50,9 @@ export function DayCard({ onDirtyChange, onSaved }) {
           return;
         }
         const nextForm = formFromWellness(data.wellness);
-        setGarmin(data.garmin);
-        setForm(nextForm);
-        setSavedForm(nextForm);
-        setLoadedDate(date);
+      setGarmin(data.garmin);
+      setForm(nextForm);
+      setLoadedDate(date);
       } catch (loadError) {
         if (!active || loadError?.name === 'AbortError') return;
         setError('Could not load this day.');
@@ -68,10 +67,6 @@ export function DayCard({ onDirtyChange, onSaved }) {
       controller.abort();
     };
   }, [date]);
-
-  useEffect(() => {
-    onDirtyChange?.(JSON.stringify(form) !== JSON.stringify(savedForm));
-  }, [form, savedForm, onDirtyChange]);
 
   function setScore(field, value) {
     setForm((current) => ({ ...current, [field]: value }));
@@ -99,7 +94,6 @@ export function DayCard({ onDirtyChange, onSaved }) {
       const nextForm = formFromWellness(data.wellness);
       setGarmin(data.garmin);
       setForm(nextForm);
-      setSavedForm(nextForm);
       setMessage(data.wellness ? 'Saved.' : 'Cleared.');
       onSaved?.(savedDate, data.wellness);
     } catch {
@@ -112,15 +106,21 @@ export function DayCard({ onDirtyChange, onSaved }) {
 
   const ready = Boolean(date) && loadedDate === date && !loading;
   const lines = garminLines(garmin);
+  const { summary, rest } = splitGarminLines(lines);
+  const restOpen = showAll || summary.length === 0;
 
   return (
     <form className="editor-form" onSubmit={onSubmit}>
+      <div className="day-scroll">
         <label>
           Date
           <input
             type="date"
             value={date}
-            onChange={(event) => setDate(event.target.value)}
+            onChange={(event) => {
+              setShowAll(false);
+              setDate(event.target.value);
+            }}
             required
           />
         </label>
@@ -133,14 +133,25 @@ export function DayCard({ onDirtyChange, onSaved }) {
             <p>No Garmin metrics for this day.</p>
           ) : null}
           {date && !loading && !error && lines.length > 0 ? (
-            <dl className="metrics">
-              {lines.map((line) => (
-                <div key={line.key}>
-                  <dt>{line.label}</dt>
-                  <dd>{line.value}</dd>
-                </div>
-              ))}
-            </dl>
+            <>
+              <MetricList lines={lines} className="metrics metrics-all" />
+              {summary.length > 0 ? <MetricList lines={summary} className="metrics metrics-summary" /> : null}
+              {rest.length > 0 ? (
+                <>
+                  {summary.length > 0 ? (
+                    <button
+                      className="secondary metrics-toggle"
+                      type="button"
+                      aria-expanded={showAll}
+                      onClick={() => setShowAll((current) => !current)}
+                    >
+                      {showAll ? 'Hide metrics' : 'All metrics'}
+                    </button>
+                  ) : null}
+                  <MetricList lines={rest} className={restOpen ? 'metrics metrics-rest is-open' : 'metrics metrics-rest'} />
+                </>
+              ) : null}
+            </>
           ) : null}
         </div>
         <div className="wellness">
@@ -149,26 +160,20 @@ export function DayCard({ onDirtyChange, onSaved }) {
             <fieldset key={field} className="score" disabled={!ready || saving}>
               <legend>{SCORE_LABELS[field]}</legend>
               <div className="choices">
-                <label>
-                  <input
-                    type="radio"
-                    name={field}
-                    checked={form[field] == null}
-                    onChange={() => setScore(field, null)}
-                  />
-                  Not set
-                </label>
-                {SCORE_WORDS[field].map((word, index) => (
-                  <label key={word}>
-                    <input
-                      type="radio"
-                      name={field}
-                      checked={form[field] === index + 1}
-                      onChange={() => setScore(field, index + 1)}
-                    />
-                    {word}
-                  </label>
-                ))}
+                {SCORE_WORDS[field].map((word, index) => {
+                  const value = index + 1;
+                  const selected = form[field] === value;
+                  return (
+                    <button
+                      key={word}
+                      type="button"
+                      aria-pressed={selected}
+                      onClick={() => setScore(field, selected ? null : value)}
+                    >
+                      {word}
+                    </button>
+                  );
+                })}
               </div>
             </fieldset>
           ))}
@@ -182,13 +187,27 @@ export function DayCard({ onDirtyChange, onSaved }) {
             />
           </label>
         </div>
-        <div className="day-actions">
-          <button type="submit" disabled={!ready || saving}>
-            {saving ? 'Saving...' : 'Save'}
-          </button>
-          {message ? <p className="muted">{message}</p> : null}
-          {error ? <p className="error">{error}</p> : null}
+      </div>
+      <div className="day-actions">
+        <button type="submit" disabled={!ready || saving}>
+          {saving ? 'Saving...' : 'Save'}
+        </button>
+        {message ? <p className="muted">{message}</p> : null}
+        {error ? <p className="error">{error}</p> : null}
+      </div>
+    </form>
+  );
+}
+
+function MetricList({ lines, className }) {
+  return (
+    <dl className={className}>
+      {lines.map((line) => (
+        <div key={line.key}>
+          <dt>{line.label}</dt>
+          <dd>{line.value}</dd>
         </div>
-      </form>
+      ))}
+    </dl>
   );
 }

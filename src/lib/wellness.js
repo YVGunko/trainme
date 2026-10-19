@@ -32,6 +32,14 @@ export const SCORE_WORDS = {
   motivation: ['High', 'Normal', 'Low', 'Very low'],
 };
 
+// Phone glance. Desktop still shows every present Garmin field, in GARMIN_FIELDS order.
+export const GARMIN_SUMMARY_KEYS = [
+  'sleep_duration_sec',
+  'overnight_hrv',
+  'resting_hr',
+  'readiness_score',
+];
+
 export const GARMIN_FIELDS = [
   { key: 'sleep_duration_sec', label: 'Sleep', kind: 'duration' },
   { key: 'sleep_score', label: 'Sleep score', kind: 'number' },
@@ -127,6 +135,16 @@ export function formatMetricNumber(value) {
   const rounded = Math.round(value * 1e6) / 1e6;
   if (Object.is(rounded, -0)) return '0';
   return String(rounded);
+}
+
+export function splitGarminLines(lines) {
+  const summary = [];
+  const rest = [];
+  for (const line of lines) {
+    if (GARMIN_SUMMARY_KEYS.includes(line.key)) summary.push(line);
+    else rest.push(line);
+  }
+  return { summary, rest };
 }
 
 export function garminLines(row) {

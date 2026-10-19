@@ -6,6 +6,7 @@
   --bg: #fafaf9;
   --card: #ffffff;
   --danger: #9f1239;
+  --tabbar-height: 48px;
 }
 
 * {
@@ -41,6 +42,28 @@ h1 {
   align-items: flex-start;
   gap: 16px;
   margin-bottom: 20px;
+}
+
+.top-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+a.secondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: fit-content;
+  min-height: 40px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 10px 16px;
+  background: #fff;
+  color: var(--text);
+  font-weight: 650;
+  text-decoration: none;
 }
 
 .card {
@@ -263,7 +286,7 @@ tr.is-selected td {
   justify-content: space-between;
   gap: 12px;
   align-items: center;
-  padding: 16px 20px;
+  padding: calc(16px + env(safe-area-inset-top)) 20px 16px;
   border-bottom: 1px solid var(--line);
 }
 
@@ -275,6 +298,7 @@ tr.is-selected td {
 .drawer-footer {
   border-bottom: 0;
   border-top: 1px solid var(--line);
+  padding: 16px 20px calc(16px + env(safe-area-inset-bottom));
 }
 
 .drawer-actions {
@@ -385,20 +409,30 @@ tr.is-selected td {
 }
 
 .choices {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px 14px;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  max-width: 560px;
 }
 
-.choices label {
-  display: flex;
-  align-items: center;
-  gap: 6px;
+.choices button {
+  width: 100%;
+  min-height: 44px;
+  padding: 8px 4px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fff;
   color: var(--text);
+  font-size: 0.82rem;
+  font-weight: 650;
+  line-height: 1.2;
+  white-space: normal;
 }
 
-.choices input {
-  width: auto;
+.choices button[aria-pressed='true'] {
+  background: #1c1917;
+  color: #fff;
+  border-color: #1c1917;
 }
 
 .metrics {
@@ -433,13 +467,238 @@ tr.is-selected td {
   margin: 0;
 }
 
+.day-scroll {
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+}
+
+.phone-only,
+.tabbar,
+.activity-cards,
+.metrics-summary,
+.metrics-rest,
+.metrics-toggle {
+  display: none;
+}
+
+.data-tools {
+  display: grid;
+  gap: 20px;
+}
+
+.activity-cards {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  gap: 10px;
+}
+
+.activity-card {
+  display: grid;
+  gap: 2px;
+  width: 100%;
+  min-height: 44px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #fff;
+  color: var(--text);
+  text-align: left;
+  font-weight: 500;
+}
+
+.activity-card.is-selected {
+  background: #f5f5f4;
+  border-color: #1c1917;
+}
+
+.activity-when,
+.activity-meta {
+  color: var(--muted);
+  font-size: 0.92rem;
+  font-weight: 500;
+}
+
+.activity-title {
+  font-weight: 650;
+}
+
+/* Width <= 640px is the phone layout. iPhone 16 portrait is 393px. */
 @media (max-width: 640px) {
   main {
-    width: min(100% - 24px, 960px);
-    margin-top: 20px;
+    width: 100%;
+    margin: 0;
+    padding: calc(12px + env(safe-area-inset-top)) 16px calc(16px + env(safe-area-inset-bottom));
   }
 
-  .top {
+  main:has(.shell) {
+    height: 100dvh;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    padding-bottom: 0;
+  }
+
+  main:has(.shell) .top {
+    flex-shrink: 0;
     align-items: center;
+    margin-bottom: 12px;
+  }
+
+  .shell {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    min-height: 0;
+  }
+
+  .shell.is-today .activities-pane,
+  .shell.is-activities .today-pane {
+    display: none;
+  }
+
+  .today-pane,
+  .activities-pane {
+    flex: 1;
+    min-height: 0;
+  }
+
+  .activities-pane {
+    overflow: auto;
+  }
+
+  .day-card.today-pane {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+  }
+
+  .day-card.today-pane form.editor-form {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    gap: 0;
+    min-height: 0;
+  }
+
+  .day-scroll {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+    padding-bottom: 12px;
+  }
+
+  .shell.is-today .day-actions {
+    display: grid;
+    flex-shrink: 0;
+    padding-top: 10px;
+    border-top: 1px solid var(--line);
+    background: var(--bg);
+  }
+
+  .shell.is-today .day-actions button {
+    width: 100%;
+    min-height: 44px;
+  }
+
+  .day-card input[type='date'] {
+    max-width: none;
+  }
+
+  .phone-only {
+    display: block;
+  }
+
+  .tabbar {
+    display: flex;
+    flex-shrink: 0;
+    z-index: 15;
+    background: #fff;
+    border-top: 1px solid var(--line);
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+
+  .tabbar button {
+    flex: 1;
+    width: auto;
+    min-height: var(--tabbar-height);
+    padding: 8px;
+    border: 0;
+    border-radius: 0;
+    background: #fff;
+    color: var(--muted);
+    font-weight: 650;
+    box-shadow: none;
+  }
+
+  .tabbar button[aria-current='page'] {
+    color: var(--text);
+    box-shadow: inset 0 2px 0 #1c1917;
+  }
+
+  .table-wrap,
+  .sort-note {
+    display: none;
+  }
+
+  .activity-cards {
+    display: grid;
+  }
+
+  .search {
+    max-width: none;
+  }
+
+  .metrics-all {
+    display: none;
+  }
+
+  .metrics.metrics-summary {
+    display: grid;
+  }
+
+  .metrics-toggle {
+    display: flex;
+    justify-content: center;
+    width: 100%;
+    min-height: 44px;
+    margin-top: 10px;
+  }
+
+  .metrics.metrics-rest.is-open {
+    display: grid;
+    margin-top: 10px;
+  }
+
+  .data-tools .toolbar {
+    display: grid;
+  }
+
+  .data-tools .toolbar button,
+  .day-prompt button,
+  .drawer-bar button,
+  .top-actions a,
+  .top-actions button {
+    min-height: 44px;
+  }
+
+  .data-tools .toolbar button {
+    width: 100%;
+  }
+
+  .drawer-actions button {
+    flex: 1;
+    min-height: 44px;
+  }
+
+  .drawer {
+    width: 100%;
+    box-shadow: none;
   }
 }

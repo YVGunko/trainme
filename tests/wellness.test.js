@@ -6,6 +6,7 @@ import {
   formatMetricNumber,
   formatSleep,
   garminLines,
+  splitGarminLines,
   dayNeedsCheckIn,
   isBlankWellness,
   localCalendarDate,
@@ -113,6 +114,30 @@ test('sleep is shown in hours and minutes and empty garmin fields stay hidden', 
     note: null,
   });
   assert.equal(SCORE_FIELDS.length, 8);
+});
+
+test('phone glance is sleep, overnight HRV, resting heart rate, and readiness', () => {
+  const lines = garminLines({
+    sleep_duration_sec: 28800,
+    sleep_score: 80,
+    overnight_hrv: 42,
+    resting_hr: 48,
+    readiness_score: 70,
+    training_status: 'PRODUCTIVE',
+  });
+  assert.deepEqual(splitGarminLines(lines), {
+    summary: [
+      { key: 'sleep_duration_sec', label: 'Sleep', value: '8h 0m' },
+      { key: 'overnight_hrv', label: 'Overnight HRV', value: '42' },
+      { key: 'resting_hr', label: 'Resting heart rate', value: '48' },
+      { key: 'readiness_score', label: 'Readiness', value: '70' },
+    ],
+    rest: [
+      { key: 'sleep_score', label: 'Sleep score', value: '80' },
+      { key: 'training_status', label: 'Training status', value: 'PRODUCTIVE' },
+    ],
+  });
+  assert.deepEqual(splitGarminLines([]), { summary: [], rest: [] });
 });
 
 test('the wellness table migration matches the statement the app runs', () => {

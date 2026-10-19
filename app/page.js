@@ -1,5 +1,6 @@
 import { cookies } from 'next/headers';
 import { ActivityScreen } from '@/components/activity-screen';
+import { AppHeader } from '@/components/app-header';
 import { LoginForm } from '@/components/login-form';
 import { userFromToken } from '@/server/session';
 import { listActivities } from '@/server/activities';
@@ -39,17 +40,7 @@ export default async function HomePage() {
 
   return (
     <main>
-      <header className="top">
-        <div>
-          <h1>Тренировки</h1>
-          <p className="muted">{user.username}</p>
-        </div>
-        <form action="/api/auth/logout" method="post">
-          <button className="secondary" type="submit">
-            Выйти
-          </button>
-        </form>
-      </header>
+      <AppHeader username={user.username} />
       {listError ? <p className="error">{listError}</p> : null}
       <ActivityScreen activities={activities} />
     </main>
