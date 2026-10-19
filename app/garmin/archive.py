@@ -391,7 +391,24 @@ def _stored_sleep(existing: dict[str, Any] | None) -> tuple[Any, Any]:
     heart = payload.get("heart_rate")
     if not isinstance(sleep, dict) or not isinstance(heart, dict):
         return None, None
+    if not _has_sleep_duration(sleep) or not _has_resting_hr(heart):
+        return None, None
     return sleep, heart
+
+
+def _has_sleep_duration(sleep: dict[str, Any]) -> bool:
+    daily = sleep.get("dailySleepDTO")
+    if not isinstance(daily, dict):
+        return False
+    return _is_number(daily.get("sleepTimeSeconds"))
+
+
+def _has_resting_hr(heart: dict[str, Any]) -> bool:
+    return _is_number(heart.get("restingHeartRate"))
+
+
+def _is_number(value: Any) -> bool:
+    return not isinstance(value, bool) and isinstance(value, (int, float))
 
 
 def _daily_sections(client: Garmin, day: str) -> dict[str, Any]:

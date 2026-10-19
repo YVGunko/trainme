@@ -402,6 +402,27 @@ class PeriodTest(unittest.TestCase):
         self.assertNotIn("running_tolerance", fields)
         self.assertNotIn("running_impact_load", fields)
 
+    def test_period_fetches_sleep_again_when_the_stored_night_is_empty(self) -> None:
+        client = _garmin_client([])
+        client.get_activities_by_date.return_value = []
+        client.get_sleep_data.return_value = {"dailySleepDTO": {"sleepTimeSeconds": 25000}}
+        client.get_heart_rates.return_value = {"restingHeartRate": 40}
+        empty_night = json.dumps(
+            {
+                "sleep": {"dailySleepDTO": {"sleepTimeSeconds": None}},
+                "heart_rate": {"restingHeartRate": None, "calendarDate": "2026-10-17"},
+            }
+        ).encode()
+        with _archive_patches(client, activity_ids=set(), days={"2026-10-17"}):
+            with patch("app.garmin.archive.get_private", return_value=empty_night):
+                with patch("app.garmin.archive.write_day_metrics") as write:
+                    result = archive_period("2026-10-17", "2026-10-17")
+        client.get_sleep_data.assert_called_once_with("2026-10-17")
+        client.get_heart_rates.assert_called_once_with("2026-10-17")
+        self.assertEqual(result["downloaded_day_count"], 1)
+        self.assertEqual(write.call_args.args[2]["sleep_duration_sec"], 25000.0)
+        self.assertEqual(write.call_args.args[2]["resting_hr"], 40.0)
+
     def test_refresh_rewrites_stored_days_without_activity_downloads(self) -> None:
         client = _garmin_client([])
         with _archive_patches(client, activity_ids=set(), days=set()):
