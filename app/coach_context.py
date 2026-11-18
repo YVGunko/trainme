@@ -31,6 +31,8 @@ from app.storage.db import (
 
 # How far back each part reaches. These are policy, not measurements: enough
 # detail to judge today, enough history to see a block and a break.
+# Both ends of the range are inclusive, so the count is DETAIL_DAYS including
+# today, not one day more.
 DETAIL_DAYS = 28
 HISTORY_DAYS = 365
 
@@ -42,7 +44,9 @@ HISTORY_LIMIT = 400
 def build_context(today: date | None = None) -> dict[str, Any]:
     """Return the full context, with the profile first for prompt caching."""
     end = today or date.today()
-    detail_start = end - timedelta(days=DETAIL_DAYS)
+    # Both ends are inclusive, so counting back DETAIL_DAYS - 1 yields exactly
+    # DETAIL_DAYS rows.
+    detail_start = end - timedelta(days=DETAIL_DAYS - 1)
     history_start = end - timedelta(days=HISTORY_DAYS)
 
     with connect() as connection:

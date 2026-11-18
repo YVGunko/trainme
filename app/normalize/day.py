@@ -36,6 +36,10 @@ def _put_daily_status(found: dict[str, Any], payload: dict[str, Any]) -> None:
     summary = hrv.get("hrvSummary") if isinstance(hrv, dict) else None
     if isinstance(summary, dict):
         _put_text(found, "hrv_status", summary.get("status"))
+        # Garmin reports last night's HRV here, not on the sleep record. Its
+        # absence was why overnight_hrv was null on every stored day.
+        if "overnight_hrv" not in found:
+            _put_number(found, "overnight_hrv", summary.get("lastNightAvg"))
 
     readiness = _readiness_entry(payload.get("training_readiness"))
     if readiness is not None:

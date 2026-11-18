@@ -100,7 +100,9 @@ class DayMetricsTest(unittest.TestCase):
             "running_tolerance": [],
         }
         metrics = day_metrics(payload)
-        self.assertNotIn("overnight_hrv", metrics)
+        # Garmin reports last night's HRV on the summary, not the sleep record,
+        # so a day with no avgSleepHRV still has an overnight value.
+        self.assertEqual(metrics["overnight_hrv"], 94.0)
         self.assertEqual(metrics["hrv_status"], "UNBALANCED")
         self.assertEqual(metrics["readiness_score"], 76.0)
         self.assertEqual(metrics["readiness_level"], "HIGH")

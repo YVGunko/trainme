@@ -88,6 +88,22 @@ class BuildContextTest(unittest.TestCase):
         start, end, _limit = history.call_args.args[1:]
         self.assertEqual(end, "2026-11-18")
         self.assertEqual(start, "2025-11-18")
+
+    def test_the_detail_window_covers_exactly_its_day_count(self) -> None:
+        with patch("app.coach_context.connect") as connect:
+            connect.return_value.__enter__.return_value = MagicMock()
+            with patch("app.coach_context.ensure_schema"):
+                with patch("app.coach_context.load_athlete_profile", return_value=None):
+                    with patch("app.coach_context.load_activity_history", return_value=[]):
+                        with patch("app.coach_context.load_recent_days", return_value=[]) as days:
+                            with patch(
+                                "app.coach_context.load_subjective_days", return_value=[]
+                            ):
+                                build_context(date(2026, 11, 18))
+        start, end = days.call_args.args[1:]
+        span = (date.fromisoformat(end) - date.fromisoformat(start)).days + 1
+        # Both ends are inclusive, so the span must equal the promise.
+        self.assertEqual(span, 28)
 class CoverageTest(unittest.TestCase):
     def test_reports_counts_and_the_week_range(self) -> None:
         context = {
