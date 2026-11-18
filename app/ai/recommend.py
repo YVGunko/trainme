@@ -52,7 +52,9 @@ def _ask(context: dict[str, Any]) -> dict[str, Any]:
     except client.LlmRateLimited as error:
         raise RecommendationError(str(error), "rate_limited") from error
     except client.LlmError as error:
-        raise RecommendationError(str(error), "provider_error") from error
+        # The message already carries an excerpt of what the model said, which
+        # is the only way to see why a schema-shaped answer was refused.
+        raise RecommendationError(str(error), "bad_answer") from error
     try:
         return read_answer(raw)
     except AnswerShapeError as error:

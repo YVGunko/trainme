@@ -29,6 +29,15 @@ How to read the data:
   the trend, not for tomorrow.
 - wellness rows are the athlete's own 1-4 scores, where 1 is best and 4 is worst.
 
+Sport names:
+- Every "sport" field already uses one of these five: running, cycling,
+  strength_training, yoga, mobility.
+- A session this app cannot programme is reported as "other", and its Garmin
+  name travels beside it as garmin_sport. Read that name for what the session
+  was, but never put it in the workout you return: the workout's sport must be
+  one of the five.
+- "other" still counts as training the athlete did.
+
 The two load numbers are not the same measure:
 - garmin_daily_load is Garmin's own training load for that day, across all sport.
 - activity_load and activity_load_sum are the load of one activity, and the sum

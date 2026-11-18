@@ -14,6 +14,8 @@ from __future__ import annotations
 from datetime import date, timedelta
 from typing import Any
 
+from app.sports import to_sport
+
 # Days that stay as individual activities. Inside this window the exact order and
 # the exact load of one session matter for tomorrow's plan.
 RAW_DAYS = 14
@@ -65,8 +67,9 @@ def weekly_summary(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
         week["sessions"] += 1
         week["minutes"] += minutes
         week["load"] += _number(row.get("training_load")) or 0.0
-        sport = row.get("sport")
-        name = sport if isinstance(sport, str) and sport else "other"
+        # Fold Garmin's name here so a week's breakdown uses the same five names
+        # the context uses everywhere else, and a workout can be built for one.
+        name = to_sport(row.get("sport"))
         week["by_sport"][name] = week["by_sport"].get(name, 0.0) + minutes
 
     summary: list[dict[str, Any]] = []

@@ -20,6 +20,7 @@ from datetime import date, timedelta
 from typing import Any
 
 from app.history_summary import RAW_DAYS, split_history, weekly_summary
+from app.sports import to_sport
 from app.storage.db import (
     connect,
     ensure_schema,
@@ -109,10 +110,17 @@ def _day(row: dict[str, Any]) -> dict[str, Any]:
 
 
 def _slim(row: dict[str, Any]) -> dict[str, Any]:
-    """Keep the fields that matter per session, rounded to something readable."""
+    """Keep the fields that matter per session, rounded to something readable.
+
+    The sport is folded to the five names a workout can be built for. Garmin's
+    own name travels as ``garmin_sport`` so nothing is lost, and ``sport`` is
+    always one of the five or "other".
+    """
+    garmin_sport = row.get("sport")
     return {
         "day": row.get("day"),
-        "sport": row.get("sport"),
+        "sport": to_sport(garmin_sport),
+        "garmin_sport": garmin_sport,
         "minutes": _round(row.get("duration_sec"), 60),
         "km": _round(row.get("distance_m"), 1000),
         "avg_hr": _round(row.get("avg_hr"), 1),

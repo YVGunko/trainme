@@ -140,13 +140,22 @@ def _content(answer: dict[str, Any], schema: dict[str, Any]) -> dict[str, Any]:
     try:
         parsed = json.loads(content)
     except json.JSONDecodeError as error:
-        raise LlmError("Answer was not valid JSON") from error
+        raise LlmError(_excerpt(f"Answer was not valid JSON: {content}")) from error
     if not isinstance(parsed, dict):
-        raise LlmError("Answer was not a JSON object")
+        raise LlmError(_excerpt(f"Answer was not a JSON object: {content}"))
     missing = [key for key in schema.get("required", []) if key not in parsed]
     if missing:
-        raise LlmError(f"Answer is missing {missing[0]}")
+        # The keys the model did return are the useful part of the diagnosis,
+        # so they travel in the message rather than being hidden behind "missing".
+        keys = ", ".join(sorted(parsed)) or "none"
+        raise LlmError(_excerpt(f"Answer is missing {missing[0]}; it had: {keys}"))
     return parsed
+
+
+def _excerpt(text: str, limit: int = 400) -> str:
+    """Keep an error readable and bounded; the answer is data, not a secret."""
+    flat = " ".join(text.split())
+    return flat if len(flat) <= limit else flat[:limit] + "..."
 
 
 __all__ = [

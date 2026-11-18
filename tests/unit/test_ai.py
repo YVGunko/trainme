@@ -134,6 +134,48 @@ class ChatTest(unittest.TestCase):
                 with self.assertRaises(client.LlmError):
                     client.chat([], ANSWER_SCHEMA)
 
+    def test_a_refused_answer_shows_what_the_model_returned(self) -> None:
+        # Without the keys the model actually sent, "missing recommendation" is
+        # impossible to diagnose.
+        response = MagicMock()
+        response.read.return_value = json.dumps(
+            _completion({"plan": {"summary": "x"}, "session": {"sport": "cycling"}})
+        ).encode()
+        response.__enter__ = lambda self: response
+        response.__exit__ = lambda *args: False
+        with patch.dict(os.environ, {"LLM_API_KEY": "k"}, clear=True):
+            with patch("urllib.request.urlopen", return_value=response):
+                with self.assertRaises(client.LlmError) as caught:
+                    client.chat([], ANSWER_SCHEMA)
+        message = str(caught.exception)
+        self.assertIn("missing recommendation", message)
+        self.assertIn("plan", message)
+        self.assertIn("session", message)
+
+    def test_a_non_json_answer_is_quoted_back(self) -> None:
+        response = MagicMock()
+        response.read.return_value = json.dumps(
+            _completion("Here is your plan: ride easy")
+        ).encode()
+        response.__enter__ = lambda self: response
+        response.__exit__ = lambda *args: False
+        with patch.dict(os.environ, {"LLM_API_KEY": "k"}, clear=True):
+            with patch("urllib.request.urlopen", return_value=response):
+                with self.assertRaises(client.LlmError) as caught:
+                    client.chat([], ANSWER_SCHEMA)
+        self.assertIn("ride easy", str(caught.exception))
+
+    def test_a_long_answer_is_truncated_in_the_error(self) -> None:
+        response = MagicMock()
+        response.read.return_value = json.dumps(_completion("x" * 5000)).encode()
+        response.__enter__ = lambda self: response
+        response.__exit__ = lambda *args: False
+        with patch.dict(os.environ, {"LLM_API_KEY": "k"}, clear=True):
+            with patch("urllib.request.urlopen", return_value=response):
+                with self.assertRaises(client.LlmError) as caught:
+                    client.chat([], ANSWER_SCHEMA)
+        self.assertLess(len(str(caught.exception)), 600)
+
 
 class ReadAnswerTest(unittest.TestCase):
     def test_reads_a_well_formed_answer(self) -> None:
