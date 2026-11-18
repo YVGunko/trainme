@@ -5,7 +5,7 @@ import unittest
 import urllib.error
 from unittest.mock import MagicMock, patch
 
-from app.ai import client
+from app.ai import client, exercise_resolve
 from app.ai.prompt import SYSTEM_PROMPT, build_messages
 from app.ai.recommend import RecommendationError, recommend
 from app.ai.schema import ANSWER_SCHEMA, AnswerShapeError, read_answer
@@ -319,7 +319,10 @@ class RecommendTest(unittest.TestCase):
                     recommend()
         self.assertEqual(caught.exception.reason, "not_configured")
 
-    def test_an_invented_exercise_is_refused_by_the_validator(self) -> None:
+    def test_an_invented_exercise_leaves_the_step_out_and_is_reported(self) -> None:
+        # The catalog cannot name it, so the step is not sent. Sending a
+        # different movement would misrepresent the plan, and sending this name
+        # would be refused by Garmin anyway.
         bad_workout = {
             "name": "Strength",
             "sport": "strength_training",
@@ -330,7 +333,9 @@ class RecommendTest(unittest.TestCase):
                             "kind": "interval",
                             "end": {"type": "reps", "count": 10},
                             "exercise": "Definitely Not An Exercise",
-                        }
+                        },
+                        {"kind": "warmup", "end": {"type": "time", "seconds": 300}},
+                        {"kind": "cooldown", "end": {"type": "time", "seconds": 300}},
                     ]
                 }
             ],
@@ -338,9 +343,82 @@ class RecommendTest(unittest.TestCase):
         bad = {**_ANSWER, "workout": bad_workout}
         with patch("app.ai.recommend.build_context", return_value={}):
             with patch("app.ai.recommend.client.chat", return_value=bad):
-                with self.assertRaises(RecommendationError) as caught:
-                    recommend()
-        self.assertEqual(caught.exception.reason, "invalid_workout")
+                with patch(
+                    "app.ai.recommend.exercise_resolve.resolve",
+                    return_value={"Definitely Not An Exercise": None},
+                ):
+                    result = recommend()
+        self.assertEqual(result["unmatched_exercises"], ["Definitely Not An Exercise"])
+        kinds = [
+            step["kind"]
+            for block in result["workout"]["blocks"]
+            for step in block["steps"]
+        ]
+        self.assertEqual(kinds, ["warmup", "cooldown"])
+        # What is sent is valid, so the athlete still gets a workout.
+        self.assertEqual(result["garmin_payload"]["sportType"]["sportTypeKey"], "strength_training")
+
+    def test_a_failed_follow_up_does_not_lose_the_plan(self) -> None:
+        # The first answer is already usable. A narrow second question failing
+        # must not discard it.
+        workout = {
+            "name": "Strength",
+            "sport": "strength_training",
+            "blocks": [
+                {
+                    "steps": [
+                        {"kind": "warmup", "end": {"type": "time", "seconds": 300}},
+                        {
+                            "kind": "interval",
+                            "end": {"type": "reps", "count": 8},
+                            "exercise": "Glute Bridge",
+                        },
+                        {"kind": "cooldown", "end": {"type": "time", "seconds": 300}},
+                    ]
+                }
+            ],
+        }
+        answer = {**_ANSWER, "workout": workout}
+        with patch("app.ai.recommend.build_context", return_value={}):
+            with patch("app.ai.recommend.client.chat", return_value=answer):
+                with patch(
+                    "app.ai.recommend.exercise_resolve.resolve",
+                    side_effect=exercise_resolve.ResolutionError("down"),
+                ):
+                    result = recommend()
+        self.assertEqual(result["unmatched_exercises"], ["Glute Bridge"])
+        kinds = [
+            step["kind"]
+            for block in result["workout"]["blocks"]
+            for step in block["steps"]
+        ]
+        self.assertEqual(kinds, ["warmup", "cooldown"])
+
+    def test_a_plain_name_is_replaced_with_the_catalog_name(self) -> None:
+        workout = {
+            "name": "Strength",
+            "sport": "strength_training",
+            "blocks": [
+                {
+                    "steps": [
+                        {"kind": "warmup", "end": {"type": "time", "seconds": 300}},
+                        {
+                            "kind": "interval",
+                            "end": {"type": "reps", "count": 8},
+                            "exercise": "Step Up",
+                        },
+                        {"kind": "cooldown", "end": {"type": "time", "seconds": 300}},
+                    ]
+                }
+            ],
+        }
+        answer = {**_ANSWER, "workout": workout}
+        with patch("app.ai.recommend.build_context", return_value={}):
+            with patch("app.ai.recommend.client.chat", return_value=answer):
+                result = recommend()
+        steps = result["workout"]["blocks"][0]["steps"]
+        self.assertEqual(steps[1]["exercise"], "Step-up")
+        self.assertNotIn("unmatched_exercises", result)
 
     def test_coverage_travels_with_the_answer(self) -> None:
         with patch(
