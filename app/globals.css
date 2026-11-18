@@ -522,6 +522,22 @@ tr.is-selected td {
   gap: 20px;
 }
 
+/* The context preview is long JSON. It scrolls on its own so it cannot widen
+   the page on a phone. */
+.context-preview {
+  max-height: 420px;
+  overflow: auto;
+  margin: 8px 0 0;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fff;
+  font-size: 0.78rem;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 .activity-cards {
   list-style: none;
   margin: 0;

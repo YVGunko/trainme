@@ -27,6 +27,7 @@ from app.garmin.probe import probe_unused
 from app.garmin.history import HistoryPeriodError, import_history
 from app.profile import ProfileError
 from app.athlete import read_profile, write_profile
+from app.coach_context import build_context, coverage
 from app.garmin.workout import (
     WorkoutDateError,
     WorkoutFitFileError,
@@ -359,6 +360,20 @@ def import_activity_history(
     except Exception as error:
         logger.warning("History import failed: %s", type(error).__name__)
         raise HTTPException(status_code=502, detail="History import failed")
+
+
+@app.get("/context")
+def read_context(authorization: str | None = Header(default=None)) -> dict:
+    """Return exactly what a coach model would receive, for review before any call."""
+    _require_service_secret(authorization)
+    try:
+        context = build_context()
+    except DatabaseNotConfigured:
+        raise HTTPException(status_code=503, detail="Context storage is not configured")
+    except Exception as error:
+        logger.warning("Context read failed: %s", type(error).__name__)
+        raise HTTPException(status_code=502, detail="Context read failed")
+    return {"context": context, "coverage": coverage(context)}
 
 
 @app.post("/probe/unused-garmin")

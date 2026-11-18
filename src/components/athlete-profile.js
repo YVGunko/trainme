@@ -24,6 +24,9 @@ export function AthleteProfile() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [importing, setImporting] = useState(false);
+  const [previewing, setPreviewing] = useState(false);
+  const [context, setContext] = useState(null);
+  const [coverage, setCoverage] = useState(null);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
 
@@ -110,6 +113,27 @@ export function AthleteProfile() {
     }
   }
 
+  async function previewContext() {
+    if (previewing) return;
+    setPreviewing(true);
+    setError('');
+    setMessage('');
+    try {
+      const response = await fetch('/api/context');
+      const data = await response.json();
+      if (!response.ok || !data.ok) {
+        setError(data.error || 'Контекст не собран');
+        return;
+      }
+      setContext(data.result?.context || null);
+      setCoverage(data.result?.coverage || null);
+    } catch {
+      setError('Контекст не собран');
+    } finally {
+      setPreviewing(false);
+    }
+  }
+
   return (
     <section className="data-tools">
       <div>
@@ -152,8 +176,25 @@ export function AthleteProfile() {
           <button type="button" className="secondary" disabled={importing} onClick={importYear}>
             {importing ? 'Загрузка...' : 'Загрузить историю за год'}
           </button>
+          <button type="button" className="secondary" disabled={previewing} onClick={previewContext}>
+            {previewing ? 'Сбор...' : 'Показать контекст тренера'}
+          </button>
         </div>
       </form>
+      {coverage ? (
+        <p className="muted">
+          История: {coverage.history_count} тренировок
+          {coverage.history_first_day ? `, ${coverage.history_first_day} — ${coverage.history_last_day}` : ''}.
+          Детальных дней: {coverage.detail_day_count}. Дней wellness: {coverage.wellness_day_count}.
+          Профиль: {coverage.profile_has_notes ? 'заполнен' : 'пуст'}.
+        </p>
+      ) : null}
+      {context ? (
+        <details>
+          <summary>Контекст, который получит модель</summary>
+          <pre className="context-preview">{JSON.stringify(context, null, 2)}</pre>
+        </details>
+      ) : null}
       {message ? <p className="muted">{message}</p> : null}
       {error ? <p className="error">{error}</p> : null}
     </section>

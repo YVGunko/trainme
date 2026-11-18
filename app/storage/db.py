@@ -560,6 +560,77 @@ def activity_history_count(connection: psycopg.Connection) -> int:
     return int(row[0])
 
 
+def load_recent_days(
+    connection: psycopg.Connection,
+    start: str,
+    end: str,
+) -> list[dict[str, Any]]:
+    """Return stored Garmin daily metrics, oldest first.
+
+    A day with no row is a day that was never archived, so the caller must not
+    read a gap as a recovered day.
+    """
+    rows = connection.execute(
+        """
+        SELECT to_char(date, 'YYYY-MM-DD'),
+               resting_hr, overnight_hrv, hrv_status,
+               sleep_duration_sec, sleep_score,
+               readiness_score, readiness_level, training_status,
+               vo2max_generic, vo2max_cycling,
+               garmin_load_acute, garmin_load_chronic, garmin_acwr,
+               monthly_load_aerobic_low, monthly_load_aerobic_high,
+               monthly_load_anaerobic
+        FROM daily_metrics
+        WHERE date >= %s::date AND date <= %s::date
+        ORDER BY date ASC
+        """,
+        (start, end),
+    ).fetchall()
+    keys = (
+        "resting_hr",
+        "overnight_hrv",
+        "hrv_status",
+        "sleep_duration_sec",
+        "sleep_score",
+        "readiness_score",
+        "readiness_level",
+        "training_status",
+        "vo2max_generic",
+        "vo2max_cycling",
+        "garmin_load_acute",
+        "garmin_load_chronic",
+        "garmin_acwr",
+        "monthly_load_aerobic_low",
+        "monthly_load_aerobic_high",
+        "monthly_load_anaerobic",
+    )
+    return [{"date": row[0], **dict(zip(keys, row[1:]))} for row in rows]
+
+
+def load_subjective_days(
+    connection: psycopg.Connection,
+    start: str,
+    end: str,
+) -> list[dict[str, Any]]:
+    """Return the scored wellness row per day. The free-text note is not read.
+
+    The note is what the athlete writes for themselves; it is deliberately left
+    in the table so it cannot reach a model by accident.
+    """
+    rows = connection.execute(
+        """
+        SELECT to_char(date, 'YYYY-MM-DD'),
+               fatigue, soreness, mood, motivation, stress, sleep_quality, injury, illness
+        FROM subjective_log
+        WHERE date >= %s::date AND date <= %s::date
+        ORDER BY date ASC
+        """,
+        (start, end),
+    ).fetchall()
+    keys = ("fatigue", "soreness", "mood", "motivation", "stress", "sleep_quality", "injury", "illness")
+    return [{"date": row[0], **dict(zip(keys, row[1:]))} for row in rows]
+
+
 def _raw_row(row: tuple) -> dict[str, Any]:
     return {
         "kind": row[0],
