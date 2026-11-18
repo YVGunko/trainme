@@ -2,6 +2,7 @@ import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { AppHeader } from '@/components/app-header';
 import { DataTools } from '@/components/data-tools';
+import { WorkoutUpload } from '@/components/workout-upload';
 import { userFromToken } from '@/server/session';
 
 export const dynamic = 'force-dynamic';
@@ -21,6 +22,7 @@ export default async function DataPage() {
   return (
     <main>
       <AppHeader username={user.username} section="data" />
+      <WorkoutUpload />
       <DataTools />
     </main>
   );

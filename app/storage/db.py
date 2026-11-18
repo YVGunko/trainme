@@ -384,6 +384,67 @@ def load_activity_meta(
     }
 
 
+def find_workout_import(
+    connection: psycopg.Connection, source_sha256: str
+) -> dict[str, Any] | None:
+    row = connection.execute(
+        """
+        SELECT garmin_workout_id, name, sport, scheduled_day::text, device_id,
+               to_char(pushed_at, 'YYYY-MM-DD"T"HH24:MI:SS')
+        FROM workout_import
+        WHERE source_sha256 = %s
+        """,
+        (source_sha256,),
+    ).fetchone()
+    if row is None:
+        return None
+    return {
+        "workout_id": row[0],
+        "name": row[1],
+        "sport": row[2],
+        "date": row[3],
+        "device_id": row[4],
+        "pushed": row[5] is not None,
+    }
+
+
+def insert_workout_import(
+    connection: psycopg.Connection,
+    source_sha256: str,
+    garmin_workout_id: int,
+    name: str,
+    sport: str,
+) -> None:
+    connection.execute(
+        """
+        INSERT INTO workout_import (source_sha256, garmin_workout_id, name, sport)
+        VALUES (%s, %s, %s, %s)
+        ON CONFLICT (source_sha256) DO NOTHING
+        """,
+        (source_sha256, garmin_workout_id, name, sport),
+    )
+    connection.commit()
+
+
+def save_workout_delivery(
+    connection: psycopg.Connection,
+    garmin_workout_id: int,
+    day: str | None,
+    device_id: int | None,
+) -> None:
+    connection.execute(
+        """
+        UPDATE workout_import
+        SET scheduled_day = COALESCE(%s::date, scheduled_day),
+            device_id = COALESCE(%s, device_id),
+            pushed_at = CASE WHEN %s IS NULL THEN pushed_at ELSE now() END
+        WHERE garmin_workout_id = %s
+        """,
+        (day, device_id, device_id, garmin_workout_id),
+    )
+    connection.commit()
+
+
 def _raw_row(row: tuple) -> dict[str, Any]:
     return {
         "kind": row[0],

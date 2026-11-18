@@ -1,3 +1,7 @@
+import base64
+import binascii
+import hashlib
+import logging
 import os
 from datetime import date
 from typing import Any
@@ -29,11 +33,31 @@ from garminconnect.workout import (
 from pydantic import ValidationError
 
 from app.garmin.archive import _login
+from app.garmin.device import (
+    WorkoutDeviceError,
+    WorkoutNotPushed,
+    WorkoutRateLimited,
+    list_devices,
+    parse_device_id,
+    push_workout,
+    resolve_device,
+)
+from app.garmin.fit_workout import WorkoutFitError, parse_workout_fit
 from app.storage.crypto import EncryptionKeyMissing
-from app.storage.db import connect, ensure_schema, load_token, save_token
+from app.storage.db import (
+    connect,
+    ensure_schema,
+    find_workout_import,
+    insert_workout_import,
+    load_token,
+    save_token,
+    save_workout_delivery,
+)
 
 # Connect displays weightValue as kilograms. The library helper writes grams.
 _KILOGRAM = {"unitId": 8, "unitKey": "kilogram", "factor": 1000.0}
+
+logger = logging.getLogger(__name__)
 
 WORKOUT_NAME = "trainme test"
 
@@ -87,6 +111,17 @@ class WorkoutDateError(Exception):
 
 class WorkoutSpecError(Exception):
     """Raised when a workout description cannot be sent."""
+
+
+class WorkoutFitFileError(Exception):
+    """Raised when an uploaded FIT file cannot be read or is too large."""
+
+
+# A workout file holds a few hundred bytes. Anything larger is not one.
+_MAX_FIT_BYTES = 256 * 1024
+
+# Fields that describe the delivery rather than the Garmin workout body.
+_OPTION_KEYS = {"date", "device_id", "push"}
 
 
 class WorkoutNotScheduled(Exception):
@@ -148,24 +183,172 @@ def build_workout(spec: dict[str, Any]) -> dict[str, Any]:
 def upload_workout(spec: dict[str, Any]) -> dict[str, Any]:
     """Upload one workout. A date also puts it on the Garmin calendar."""
     _mapping(spec, "workout")
-    day = spec.get("date")
-    scheduled_day = None if day is None else parse_workout_date(day if isinstance(day, str) else "")
-    if day is not None and not isinstance(day, str):
-        raise WorkoutDateError("Date must be YYYY-MM-DD")
-    payload = build_workout({key: value for key, value in spec.items() if key != "date"})
+    options = _options(spec)
+    payload = build_workout(
+        {key: value for key, value in spec.items() if key not in _OPTION_KEYS}
+    )
 
     client = _open_client()
-    uploaded = client.upload_workout(payload)
-    workout_id = _workout_id(uploaded)
+    workout_id = _workout_id(client.upload_workout(payload))
     result = {"workout_id": workout_id, "name": payload["workoutName"]}
-    if scheduled_day is None:
-        return result
-    try:
-        client.schedule_workout(workout_id, scheduled_day)
-    except Exception as error:
-        raise WorkoutNotScheduled(workout_id) from error
-    result["date"] = scheduled_day
+    result.update(_deliver(client, workout_id, payload["sportType"]["sportTypeKey"], options))
     return result
+
+
+def import_workout_fit(body: dict[str, Any]) -> dict[str, Any]:
+    """Read a FIT workout file and send it the same way a described workout goes."""
+    options = _options(body)
+    payload = _fit_bytes(body.get("content_base64"))
+    spec, warnings = _read_fit(payload)
+
+    sha256 = hashlib.sha256(payload).hexdigest()
+    stored = _stored_import(sha256)
+    client: Any = None
+    if stored is None:
+        # One login serves the upload, the calendar call, and the device push.
+        client = _open_client()
+        workout_id = _workout_id(client.upload_workout(build_workout(spec)))
+        _remember_import(sha256, workout_id, spec["name"], spec["sport"])
+        sport = spec["sport"]
+        scheduled = False
+    else:
+        workout_id = stored["workout_id"]
+        sport = stored["sport"]
+        scheduled = options["date"] is not None and stored["date"] == options["date"]
+
+    result: dict[str, Any] = {
+        "workout_id": workout_id,
+        "name": spec["name"],
+        "stored": stored is None,
+    }
+    if warnings:
+        result["warnings"] = warnings
+    result.update(
+        _deliver(client, workout_id, sport, options | {"already_scheduled": scheduled})
+    )
+    return result
+
+
+def list_workout_devices() -> dict[str, Any]:
+    """Return the Garmin devices a workout can be sent to."""
+    client = _open_client()
+    return list_devices(client)
+
+
+def _options(body: dict[str, Any]) -> dict[str, Any]:
+    """Read the calendar date, device, and push choice shared by both uploads."""
+    day = body.get("date")
+    if day is not None and not isinstance(day, str):
+        raise WorkoutDateError("Date must be YYYY-MM-DD")
+    device_id = parse_device_id(body.get("device_id"))
+    if body.get("device_id") is not None and device_id is None:
+        raise WorkoutDeviceError("Device id must be a positive integer")
+    push = body.get("push", False)
+    if not isinstance(push, bool):
+        raise WorkoutSpecError("push must be true or false")
+    return {
+        "date": None if day is None else parse_workout_date(day),
+        "device_id": device_id,
+        "push": push,
+    }
+
+
+def _deliver(
+    client: Any,
+    workout_id: int,
+    sport: str,
+    options: dict[str, Any],
+) -> dict[str, Any]:
+    """Put the workout on the calendar and, when asked, on a device."""
+    day = options["date"]
+    result: dict[str, Any] = {}
+    if day is not None and not options.get("already_scheduled"):
+        active = client if client is not None else _open_client()
+        try:
+            active.schedule_workout(workout_id, day)
+        except Exception as error:
+            # The day is not recorded: the calendar call did not happen.
+            _remember_delivery(workout_id, None, None)
+            raise WorkoutNotScheduled(workout_id) from error
+        _remember_delivery(workout_id, day, None)
+    if day is not None:
+        result["date"] = day
+    if options["push"]:
+        active = client if client is not None else _open_client()
+        result.update(_push(active, workout_id, sport, options["device_id"], day))
+    return result
+
+
+def _push(
+    client: Any,
+    workout_id: int,
+    sport: str,
+    device_id: int | None,
+    scheduled_day: str | None,
+) -> dict[str, Any]:
+    try:
+        chosen = resolve_device(client, sport, device_id)
+    except WorkoutDeviceError as error:
+        raise WorkoutNotPushed(workout_id, None) from error
+    target = chosen["device_id"]
+    try:
+        pushed = push_workout(client, workout_id, target)
+    except (WorkoutRateLimited, WorkoutDeviceError, WorkoutNotPushed) as error:
+        _remember_delivery(workout_id, scheduled_day, None)
+        raise WorkoutNotPushed(workout_id, target) from error
+    _remember_delivery(workout_id, scheduled_day, target)
+    return pushed | {"device_source": chosen["source"]}
+
+
+def _fit_bytes(value: Any) -> bytes:
+    if not isinstance(value, str) or not value:
+        raise WorkoutFitFileError("content_base64 is required")
+    try:
+        payload = base64.b64decode(value, validate=True)
+    except (binascii.Error, ValueError) as error:
+        raise WorkoutFitFileError("content_base64 is not base64") from error
+    if not payload:
+        raise WorkoutFitFileError("FIT file is empty")
+    if len(payload) > _MAX_FIT_BYTES:
+        raise WorkoutFitFileError("FIT file is larger than 256 KB")
+    return payload
+
+
+def _read_fit(payload: bytes) -> tuple[dict[str, Any], list[str]]:
+    try:
+        return parse_workout_fit(payload)
+    except WorkoutFitError as error:
+        raise WorkoutFitFileError(str(error)) from error
+
+
+def _stored_import(sha256: str) -> dict[str, Any] | None:
+    with connect() as connection:
+        ensure_schema(connection)
+        return find_workout_import(connection, sha256)
+
+
+def _remember_import(sha256: str, workout_id: int, name: str, sport: str) -> None:
+    try:
+        with connect() as connection:
+            insert_workout_import(connection, sha256, workout_id, name, sport)
+    except Exception as error:
+        # The workout is already in Garmin. Reporting a failure here would make
+        # the caller retry and upload a second copy, so only log it.
+        logger.warning(
+            "Workout %s import row not saved: %s", workout_id, type(error).__name__
+        )
+
+
+def _remember_delivery(workout_id: int, day: str | None, device_id: int | None) -> None:
+    try:
+        with connect() as connection:
+            save_workout_delivery(connection, workout_id, day, device_id)
+    except Exception as error:
+        # The workout is already in Garmin. A lost delivery row must not turn
+        # the answer into a retryable failure that would upload it again.
+        logger.warning(
+            "Workout %s delivery row not saved: %s", workout_id, type(error).__name__
+        )
 
 
 def build_test_strength_workout() -> dict[str, Any]:

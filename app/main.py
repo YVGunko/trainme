@@ -22,12 +22,20 @@ from app.garmin.client import (
     GarminNotConfigured,
     fetch_recent_activities,
 )
+from app.garmin.device import WorkoutDeviceError, WorkoutRateLimited
 from app.garmin.probe import probe_unused
 from app.garmin.workout import (
     WorkoutDateError,
+    WorkoutFitFileError,
+    WorkoutNotPushed,
     WorkoutNotScheduled,
+    WorkoutSpecError,
+    import_workout_fit,
+    list_workout_devices,
     schedule_test_strength_workout,
+    upload_workout,
 )
+from app.garmin.workout_probe import probe_workout_device
 from app.normalize.fit import NormalizeError
 from app.normalize.load import normalize_activity, normalize_latest
 from app.storage.blob import BlobNotConfigured, BlobReadError, BlobUploadError
@@ -156,6 +164,134 @@ def strength_test_workout(
         raise HTTPException(status_code=502, detail="Workout upload failed")
 
 
+@app.post("/workouts/devices")
+def workout_devices(authorization: str | None = Header(default=None)) -> dict:
+    _require_service_secret(authorization)
+    try:
+        return list_workout_devices()
+    except WorkoutDeviceError as error:
+        logger.warning("Garmin device list failed: %s", type(error).__name__)
+        raise HTTPException(status_code=502, detail=str(error)) from error
+    except (GarminNotConfigured, DatabaseNotConfigured, EncryptionKeyMissing):
+        raise HTTPException(status_code=503, detail="Garmin upload is not configured")
+    except GarminConnectAuthenticationError:
+        logger.warning("Garmin authentication failed")
+        raise HTTPException(status_code=401, detail="Garmin authentication failed")
+    except GarminConnectTooManyRequestsError:
+        raise HTTPException(status_code=429, detail="Garmin rate limit")
+    except GarminConnectConnectionError:
+        logger.warning("Garmin device list failed")
+        raise HTTPException(status_code=502, detail="Garmin device list failed")
+    except Exception as error:
+        logger.warning("Garmin device list failed: %s", type(error).__name__)
+        raise HTTPException(status_code=502, detail="Garmin device list failed")
+
+
+@app.post("/workouts")
+def send_workout(
+    body: dict | None = Body(default=None),
+    authorization: str | None = Header(default=None),
+) -> dict:
+    _require_service_secret(authorization)
+    payload = body if isinstance(body, dict) else {}
+    workout = payload.get("workout")
+    if not isinstance(workout, dict):
+        raise HTTPException(status_code=400, detail="workout must be an object")
+    spec = dict(workout)
+    for key in ("date", "device_id", "push"):
+        if payload.get(key) is not None:
+            spec[key] = payload[key]
+    try:
+        return upload_workout(spec)
+    except (WorkoutSpecError, WorkoutDeviceError, WorkoutDateError) as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+    except WorkoutNotPushed as error:
+        logger.warning(
+            "Workout %s uploaded but not pushed to device %s: %s",
+            error.workout_id,
+            error.device_id,
+            type(error.__cause__).__name__,
+        )
+        status = 429 if isinstance(error.__cause__, WorkoutRateLimited) else 502
+        raise HTTPException(
+            status_code=status,
+            detail=f"Workout {error.workout_id} was uploaded but not sent to a device",
+        ) from error
+    except WorkoutNotScheduled as error:
+        logger.warning(
+            "Workout %s uploaded but not scheduled: %s",
+            error.workout_id,
+            type(error.__cause__).__name__,
+        )
+        status = 429 if isinstance(error.__cause__, GarminConnectTooManyRequestsError) else 502
+        raise HTTPException(
+            status_code=status,
+            detail=f"Workout {error.workout_id} was uploaded but not scheduled",
+        ) from error
+    except (GarminNotConfigured, DatabaseNotConfigured, EncryptionKeyMissing):
+        raise HTTPException(status_code=503, detail="Garmin upload is not configured")
+    except GarminConnectAuthenticationError:
+        logger.warning("Garmin authentication failed")
+        raise HTTPException(status_code=401, detail="Garmin authentication failed")
+    except GarminConnectTooManyRequestsError:
+        raise HTTPException(status_code=429, detail="Garmin rate limit")
+    except GarminConnectConnectionError:
+        logger.warning("Workout upload failed")
+        raise HTTPException(status_code=502, detail="Workout upload failed")
+    except Exception as error:
+        logger.warning("Workout upload failed: %s", type(error).__name__)
+        raise HTTPException(status_code=502, detail="Workout upload failed")
+
+
+@app.post("/workouts/fit")
+def send_workout_fit(
+    body: dict | None = Body(default=None),
+    authorization: str | None = Header(default=None),
+) -> dict:
+    _require_service_secret(authorization)
+    payload = body if isinstance(body, dict) else {}
+    try:
+        return import_workout_fit(payload)
+    except (WorkoutFitFileError, WorkoutSpecError, WorkoutDeviceError, WorkoutDateError) as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+    except WorkoutNotPushed as error:
+        logger.warning(
+            "Fit workout %s uploaded but not pushed to device %s: %s",
+            error.workout_id,
+            error.device_id,
+            type(error.__cause__).__name__,
+        )
+        status = 429 if isinstance(error.__cause__, WorkoutRateLimited) else 502
+        raise HTTPException(
+            status_code=status,
+            detail=f"Workout {error.workout_id} was uploaded but not sent to a device",
+        ) from error
+    except WorkoutNotScheduled as error:
+        logger.warning(
+            "Fit workout %s uploaded but not scheduled: %s",
+            error.workout_id,
+            type(error.__cause__).__name__,
+        )
+        status = 429 if isinstance(error.__cause__, GarminConnectTooManyRequestsError) else 502
+        raise HTTPException(
+            status_code=status,
+            detail=f"Workout {error.workout_id} was uploaded but not scheduled",
+        ) from error
+    except (GarminNotConfigured, DatabaseNotConfigured, EncryptionKeyMissing):
+        raise HTTPException(status_code=503, detail="Garmin upload is not configured")
+    except GarminConnectAuthenticationError:
+        logger.warning("Garmin authentication failed")
+        raise HTTPException(status_code=401, detail="Garmin authentication failed")
+    except GarminConnectTooManyRequestsError:
+        raise HTTPException(status_code=429, detail="Garmin rate limit")
+    except GarminConnectConnectionError:
+        logger.warning("Fit workout upload failed")
+        raise HTTPException(status_code=502, detail="Fit workout upload failed")
+    except Exception as error:
+        logger.warning("Fit workout upload failed: %s", type(error).__name__)
+        raise HTTPException(status_code=502, detail="Fit workout upload failed")
+
+
 @app.post("/probe/unused-garmin")
 def probe_unused_garmin(
     body: dict | None = Body(default=None),
@@ -189,6 +325,50 @@ def probe_unused_garmin(
         content=json.dumps(report, ensure_ascii=False, default=str),
         media_type="application/json",
     )
+
+
+@app.post("/probe/workout-device")
+def probe_workout_device_route(
+    body: dict | None = Body(default=None),
+    authorization: str | None = Header(default=None),
+) -> Response:
+    _require_service_secret(authorization)
+    payload = body if isinstance(body, dict) else {}
+    try:
+        report = probe_workout_device(
+            _probe_workout_id(payload, "push_workout_id"),
+            _probe_workout_id(payload, "download_workout_id"),
+        )
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+    except (GarminNotConfigured, DatabaseNotConfigured, EncryptionKeyMissing):
+        raise HTTPException(status_code=503, detail="Garmin probe is not configured")
+    except GarminConnectAuthenticationError:
+        logger.warning("Garmin authentication failed")
+        raise HTTPException(status_code=401, detail="Garmin authentication failed")
+    except GarminConnectTooManyRequestsError:
+        raise HTTPException(status_code=429, detail="Garmin rate limit")
+    except GarminConnectConnectionError:
+        logger.warning("Garmin workout probe failed")
+        raise HTTPException(status_code=502, detail="Garmin workout probe failed")
+    except Exception as error:
+        logger.warning("Garmin workout probe failed: %s", type(error).__name__)
+        raise HTTPException(status_code=502, detail="Garmin workout probe failed")
+    return Response(
+        content=json.dumps(report, ensure_ascii=False, default=str),
+        media_type="application/json",
+    )
+
+
+def _probe_workout_id(payload: dict, name: str) -> int | None:
+    value = payload.get(name)
+    if value is None:
+        return None
+    if isinstance(value, str) and value.isdigit():
+        value = int(value)
+    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+        raise ValueError(f"{name} must be a positive integer")
+    return value
 
 
 @app.post("/normalize")
