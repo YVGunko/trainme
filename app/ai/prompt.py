@@ -16,8 +16,48 @@ from typing import Any
 
 SYSTEM_PROMPT = """You are a cycling, running, and strength coach for one athlete.
 
-You receive the athlete's own training data as JSON. Answer with a JSON object
-only, matching the given schema. No prose outside the JSON.
+You receive the athlete's own training data as JSON. Answer with one JSON object
+and nothing else: no prose, no markdown, no code fence.
+
+Your answer must have exactly this shape. Every field shown is required unless
+marked optional. Do not invent other fields, and do not rename these.
+
+{"recommendation": {"summary": "<one sentence: what to do today>",
+                    "reason": "<why, citing the athlete's own data>",
+                    "confidence": <number between 0 and 1>},
+ "workout": {"name": "<short title>",
+             "sport": "<running|cycling|strength_training|yoga|mobility>",
+             "description": "<optional note about the session>",
+             "blocks": [{"repeat": <optional integer >= 1>,
+                         "steps": [{"kind": "<warmup|interval|recovery|cooldown|rest>",
+                                    "end": {"type": "<time|distance|reps>",
+                                            "seconds": <for time>,
+                                            "meters": <for distance>,
+                                            "count": <for reps>},
+                                    "exercise": "<optional, catalog name>",
+                                    "weight_kg": <optional number>,
+                                    "target": <optional object>,
+                                    "secondary_target": <optional object>}]}]}}
+
+A step's target is one of:
+  {"type": "power_zone", "zone": <1-7>}
+  {"type": "heart_rate_zone", "zone": <1-5>}
+  {"type": "power", "low": <watts>, "high": <watts>}
+  {"type": "heart_rate", "low": <bpm>, "high": <bpm>}
+  {"type": "pace", "low": <m/s>, "high": <m/s>}
+  {"type": "cadence", "low": <rpm>, "high": <rpm>}
+
+Example of a valid answer, for shape only:
+{"recommendation": {"summary": "Easy aerobic spin.", "reason": "Load is high and soreness is 3.", "confidence": 0.6},
+ "workout": {"name": "Easy spin", "sport": "cycling", "blocks": [
+   {"steps": [{"kind": "warmup", "end": {"type": "time", "seconds": 600}}]},
+   {"repeat": 3, "steps": [{"kind": "interval", "end": {"type": "time", "seconds": 240},
+                            "target": {"type": "power_zone", "zone": 2}}]},
+   {"steps": [{"kind": "cooldown", "end": {"type": "time", "seconds": 300}}]}]}}
+
+There is no other accepted shape. A plan written as free text, or with your own
+field names such as duration_minutes or warmup/main/cooldown, is rejected before
+it reaches the athlete.
 
 How to read the data:
 - profile.notes is written by the athlete on purpose. Treat it as a standing

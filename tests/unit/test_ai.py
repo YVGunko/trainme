@@ -222,7 +222,24 @@ class SchemaTest(unittest.TestCase):
 
 
 class PromptTest(unittest.TestCase):
-    def test_the_system_prompt_is_a_stable_prefix(self) -> None:
+    def test_the_prompt_carries_the_shape_the_code_checks(self) -> None:
+        # DeepSeek has no schema enforcement, only json_object, so the shape has
+        # to be in the prompt or the model invents its own field names.
+        for key in ANSWER_SCHEMA["required"]:
+            self.assertIn(f'"{key}"', SYSTEM_PROMPT, f"{key} missing from the prompt")
+        for key in ANSWER_SCHEMA["properties"]["workout"]["required"]:
+            self.assertIn(f'"{key}"', SYSTEM_PROMPT, f"workout.{key} missing from the prompt")
+
+    def test_the_prompt_mentions_json_for_json_object_mode(self) -> None:
+        # DeepSeek requires the word "JSON" in the messages when json_object is set.
+        self.assertIn("JSON", SYSTEM_PROMPT)
+
+    def test_the_prompt_warns_against_invented_field_names(self) -> None:
+        # The first live answer used duration_minutes and warmup/main/cooldown.
+        self.assertIn("duration_minutes", SYSTEM_PROMPT)
+        self.assertIn("only", SYSTEM_PROMPT.lower())
+
+    def test_the_prompt_is_a_stable_prefix(self) -> None:
         first = build_messages({"today": "2026-11-18"})
         second = build_messages({"today": "2026-12-25"})
         # Prompt caching only pays off when the prefix is byte-identical.
