@@ -239,6 +239,14 @@ class PromptTest(unittest.TestCase):
         self.assertIn("duration_minutes", SYSTEM_PROMPT)
         self.assertIn("only", SYSTEM_PROMPT.lower())
 
+    def test_the_prompt_states_the_rules_the_validator_enforces(self) -> None:
+        # The first strength answer carried a power target and was refused by
+        # the validator. The rule has to be in the prompt, not only in the code.
+        flat = " ".join(SYSTEM_PROMPT.split())
+        self.assertIn("A target is never allowed on strength, yoga, or mobility", flat)
+        self.assertIn('A reps step needs an "exercise"', flat)
+        self.assertIn("never on a run or a ride", flat)
+
     def test_the_prompt_is_a_stable_prefix(self) -> None:
         first = build_messages({"today": "2026-11-18"})
         second = build_messages({"today": "2026-12-25"})

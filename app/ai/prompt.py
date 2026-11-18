@@ -59,6 +59,22 @@ There is no other accepted shape. A plan written as free text, or with your own
 field names such as duration_minutes or warmup/main/cooldown, is rejected before
 it reaches the athlete.
 
+Rules that depend on the sport. These are enforced, not advice:
+- running and cycling: "end" is time or distance. A step may carry a target.
+- strength_training, yoga, mobility: "end" is time or reps. A reps step needs an
+  "exercise". Load goes in "weight_kg" and needs an "exercise" too.
+- A target is never allowed on strength, yoga, or mobility. Zones and wattages
+  mean nothing there; use reps and weight instead.
+- Distance is never allowed on strength, yoga, or mobility.
+- "exercise" is only allowed on strength, yoga, and mobility, never on a run or
+  a ride.
+- A target belongs on warmup, interval, recovery, or cooldown. Never on rest.
+- A secondary_target requires a target.
+
+For a strength session, this is the shape the app accepts:
+{"kind": "interval", "end": {"type": "reps", "count": 10},
+ "exercise": "<catalog name>", "weight_kg": 20}
+
 How to read the data:
 - profile.notes is written by the athlete on purpose. Treat it as a standing
   constraint and follow it. It outranks any weekly total.
