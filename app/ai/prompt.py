@@ -14,6 +14,8 @@ from __future__ import annotations
 import json
 from typing import Any
 
+from garminconnect import exercises
+
 SYSTEM_PROMPT = """You are a cycling, running, and strength coach for one athlete.
 
 You receive the athlete's own training data as JSON. Answer with one JSON object
@@ -132,11 +134,44 @@ remains and say why. A shorter session that fits the constraint is better than
 an ideal one that does not.
 """
 
+_CATALOG_HEADER = """
+
+Exercise catalog. This is the complete list of names you may use in "exercise".
+Copy a name exactly as written, including capitalisation and hyphens. A name
+that is not on this list is refused, and the step is dropped from the workout.
+If no name here fits the movement you want, choose the closest entry rather than
+writing your own name.
+
+"""
+
+
+def exercise_catalog() -> str:
+    """Return the catalog grouped by category, one line per category.
+
+    Grouping costs a few tokens and buys the model the context of a movement,
+    which matters when several entries differ only by equipment. The text is
+    built from the installed catalog, so it cannot fall behind it.
+    """
+    groups: dict[str, list[str]] = {}
+    for entry in exercises.EXERCISES:
+        groups.setdefault(entry["category"], []).append(entry["name"])
+    lines = [f"{category}: {'; '.join(sorted(names))}" for category, names in sorted(groups.items())]
+    return "\n".join(lines)
+
+
+def system_prompt() -> str:
+    """Return the full system message: instructions, then the catalog."""
+    return SYSTEM_PROMPT + _CATALOG_HEADER + exercise_catalog()
+
 
 def build_messages(context: dict[str, Any]) -> list[dict[str, str]]:
-    """Return the system and user messages, cheapest-first for prompt caching."""
+    """Return the system and user messages, cheapest-first for prompt caching.
+
+    The catalog sits at the end of the system message and never changes, so the
+    whole prefix is a cache hit after the first call of the day.
+    """
     return [
-        {"role": "system", "content": SYSTEM_PROMPT},
+        {"role": "system", "content": system_prompt()},
         {
             "role": "user",
             "content": (

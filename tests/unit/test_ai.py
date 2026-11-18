@@ -6,7 +6,7 @@ import urllib.error
 from unittest.mock import MagicMock, patch
 
 from app.ai import client, exercise_resolve
-from app.ai.prompt import SYSTEM_PROMPT, build_messages
+from app.ai.prompt import SYSTEM_PROMPT, build_messages, exercise_catalog, system_prompt
 from app.ai.recommend import RecommendationError, recommend
 from app.ai.schema import ANSWER_SCHEMA, AnswerShapeError, read_answer
 
@@ -254,8 +254,36 @@ class PromptTest(unittest.TestCase):
         second = build_messages({"today": "2026-12-25"})
         # Prompt caching only pays off when the prefix is byte-identical.
         self.assertEqual(first[0], second[0])
-        self.assertEqual(first[0]["content"], SYSTEM_PROMPT)
+        self.assertEqual(first[0]["content"], system_prompt())
         self.assertNotEqual(first[1], second[1])
+
+    def test_the_catalog_is_in_the_system_message(self) -> None:
+        # The model writes "Clamshell" and "Glute Bridge". The catalog holds
+        # "Banded Clam Shells" and "Banded Glute Bridge", so it has to see them.
+        content = system_prompt()
+        for name in ("Banded Clam Shells", "Banded Glute Bridge", "Step-up", "Dead Bug"):
+            self.assertIn(name, content, f"{name} missing from the catalog")
+
+    def test_the_catalog_holds_every_name_the_matcher_accepts(self) -> None:
+        from garminconnect import exercises
+
+        content = system_prompt()
+        missing = [entry["name"] for entry in exercises.EXERCISES if entry["name"] not in content]
+        self.assertEqual(missing, [], f"{len(missing)} catalog names are not in the prompt")
+
+    def test_the_catalog_has_one_line_per_category(self) -> None:
+        from garminconnect import exercises
+
+        content = exercise_catalog()
+        self.assertIn("BANDED_EXERCISES:", content)
+        self.assertIn("SQUAT:", content)
+        categories = {entry["category"] for entry in exercises.EXERCISES}
+        self.assertEqual(len(content.splitlines()), len(categories))
+
+    def test_the_catalog_tells_the_model_to_copy_names_exactly(self) -> None:
+        flat = " ".join(system_prompt().split())
+        self.assertIn("Copy a name exactly", flat)
+        self.assertIn("the step is dropped", flat)
 
     def test_athlete_data_goes_after_the_cacheable_part(self) -> None:
         messages = build_messages({"profile": {"notes": "hamstring"}})
