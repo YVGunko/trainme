@@ -9,6 +9,13 @@
   --tabbar-height: 48px;
 }
 
+/* iOS Safari inflates text it considers small, which widens labels past the
+   column they were sized for. */
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
 * {
   box-sizing: border-box;
 }
@@ -23,6 +30,7 @@ body {
 main {
   width: min(1180px, calc(100% - 32px));
   margin: 32px auto 48px;
+  min-width: 0;
 }
 
 h1 {
@@ -38,10 +46,21 @@ h1 {
 
 .top {
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
   align-items: flex-start;
-  gap: 16px;
+  gap: 8px 16px;
   margin-bottom: 20px;
+}
+
+/* The title is one long Russian word, so it sets its own min-content width and
+   can push the action buttons off the screen unless it is allowed to shrink. */
+.top > div {
+  min-width: 0;
+}
+
+.top h1 {
+  overflow-wrap: anywhere;
 }
 
 .top-actions {
@@ -85,12 +104,19 @@ label {
 
 input {
   width: 100%;
+  min-width: 0;
   border: 1px solid var(--line);
   border-radius: 8px;
   padding: 10px 12px;
   color: var(--text);
   background: #fff;
   font: inherit;
+}
+
+/* iOS gives a date input its own intrinsic width, which can exceed a narrow
+   column and push the layout sideways. */
+input[type='date'] {
+  max-width: 100%;
 }
 
 button {
@@ -400,6 +426,10 @@ tr.is-selected td {
   border: 0;
   display: grid;
   gap: 8px;
+  /* A fieldset keeps the browser's min-inline-size: min-content, which stops it
+     shrinking below its widest child and pushes the page wider than the screen. */
+  min-inline-size: 0;
+  min-width: 0;
 }
 
 .score legend {
@@ -413,10 +443,14 @@ tr.is-selected td {
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 8px;
   max-width: 560px;
+  /* Grid and flex children default to min-width: auto, so one long label would
+     widen the whole row past the viewport instead of wrapping. */
+  min-width: 0;
 }
 
 .choices button {
   width: 100%;
+  min-width: 0;
   min-height: 44px;
   padding: 8px 4px;
   border: 1px solid var(--line);
@@ -427,6 +461,7 @@ tr.is-selected td {
   font-weight: 650;
   line-height: 1.2;
   white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 .choices button[aria-pressed='true'] {
@@ -607,8 +642,10 @@ tr.is-selected td {
     min-height: 44px;
   }
 
+  /* Keep the desktop cap off on a phone, but never let iOS's intrinsic date
+     width exceed the column. */
   .day-card input[type='date'] {
-    max-width: none;
+    max-width: 100%;
   }
 
   .phone-only {
@@ -653,6 +690,20 @@ tr.is-selected td {
 
   .search {
     max-width: none;
+  }
+
+  /* Two columns instead of four: on a 393px screen four columns leave about
+     84px per label, which a word like "Excellent" overflows once Safari scales
+     text up. Two columns keep every label inside its button. */
+  .choices {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    max-width: none;
+  }
+
+  .choices button {
+    padding: 10px 8px;
+    font-size: 0.95rem;
   }
 
   .metrics-all {
