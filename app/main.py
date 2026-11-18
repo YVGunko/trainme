@@ -28,6 +28,7 @@ from app.garmin.probe import probe_unused
 from app.garmin.history import HistoryPeriodError, import_history
 from app.profile import ProfileError
 from app.athlete import read_profile, write_profile
+from app.ai.recommend import RecommendationError, recommend
 from app.coach_context import build_context, coverage
 from app.garmin.workout import (
     WorkoutDateError,
@@ -425,6 +426,49 @@ def read_days(
         logger.warning("Day read failed: %s", type(error).__name__)
         raise HTTPException(status_code=502, detail="Day read failed")
     return {"days": rows}
+
+
+@app.post("/recommend")
+def make_recommendation(
+    body: dict | None = Body(default=None),
+    authorization: str | None = Header(default=None),
+) -> dict:
+    """Ask the coach for today's session. Nothing is uploaded.
+
+    The answer still has to pass the workout validator, which recommend() does
+    before returning, so the caller receives a payload that would be accepted by
+    Garmin or an error explaining why not.
+    """
+    _require_service_secret(authorization)
+    payload = body if isinstance(body, dict) else {}
+    day = payload.get("date")
+    if day is not None and not isinstance(day, str):
+        raise HTTPException(status_code=400, detail="Date must be YYYY-MM-DD")
+    try:
+        today = None if day is None else date.fromisoformat(day)
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail="Date must be YYYY-MM-DD") from error
+    try:
+        return recommend(today)
+    except RecommendationError as error:
+        if error.reason == "not_configured":
+            raise HTTPException(status_code=503, detail="The coach has no API key") from error
+        if error.reason == "rate_limited":
+            logger.warning("Coach rate limited")
+            raise HTTPException(status_code=429, detail=str(error)) from error
+        if error.reason in {"bad_answer", "invalid_workout"}:
+            logger.warning("Coach answer refused: %s", error.reason)
+            raise HTTPException(
+                status_code=502,
+                detail={"reason": error.reason, "message": str(error)},
+            ) from error
+        logger.warning("Coach call failed: %s", type(error).__name__)
+        raise HTTPException(status_code=502, detail=str(error)) from error
+    except DatabaseNotConfigured:
+        raise HTTPException(status_code=503, detail="Context storage is not configured")
+    except Exception as error:
+        logger.warning("Coach call failed: %s", type(error).__name__)
+        raise HTTPException(status_code=502, detail="Coach call failed")
 
 
 @app.post("/probe/unused-garmin")
