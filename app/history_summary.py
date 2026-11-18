@@ -74,10 +74,10 @@ def weekly_summary(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
         week = weeks[key]
         summary.append(
             {
-                "week": week["week"],
+                "week": key,
                 "sessions": week["sessions"],
                 "minutes": round(week["minutes"], 1),
-                "load": round(week["load"], 1),
+                "activity_load_sum": round(week["load"], 1),
                 "by_sport_minutes": {name: round(value, 1) for name, value in week["by_sport"].items()},
             }
         )

@@ -104,6 +104,38 @@ class BuildContextTest(unittest.TestCase):
         span = (date.fromisoformat(end) - date.fromisoformat(start)).days + 1
         # Both ends are inclusive, so the span must equal the promise.
         self.assertEqual(span, 28)
+class LoadNamingTest(unittest.TestCase):
+    """Two Garmin numbers are both called load and use different scales."""
+
+    def test_no_field_is_called_plain_load(self) -> None:
+        from app.coach_context import _day, _slim
+
+        day = _day({"date": "2026-11-18", "garmin_load_acute": 69.0})
+        activity = _slim({"day": "2026-11-18", "training_load": 50.0})
+        week = {"week": "2026-11-16", "activity_load_sum": 70.0}
+        for payload in (day, activity, week):
+            self.assertNotIn("load", payload, payload)
+
+    def test_the_daily_load_is_renamed(self) -> None:
+        from app.coach_context import _day
+
+        day = _day({"date": "2026-11-18", "garmin_load_acute": 69.0})
+        self.assertEqual(day["garmin_daily_load"], 69.0)
+        self.assertNotIn("garmin_load_acute", day)
+
+    def test_a_day_without_the_field_gains_nothing(self) -> None:
+        from app.coach_context import _day
+
+        day = _day({"date": "2026-11-18", "resting_hr": 48})
+        self.assertEqual(day, {"date": "2026-11-18", "resting_hr": 48})
+
+    def test_the_activity_load_keeps_its_own_name(self) -> None:
+        from app.coach_context import _slim
+
+        activity = _slim({"day": "2026-11-18", "training_load": 50.0})
+        self.assertEqual(activity["activity_load"], 50.0)
+
+
 class CoverageTest(unittest.TestCase):
     def test_reports_counts_and_the_week_range(self) -> None:
         context = {

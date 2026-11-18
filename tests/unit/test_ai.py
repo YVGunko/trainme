@@ -194,10 +194,25 @@ class PromptTest(unittest.TestCase):
         self.assertIn("hamstring", messages[1]["content"])
 
     def test_the_prompt_names_the_data_artefacts(self) -> None:
-        # A zero ACWR next to a small acute load is a Garmin gap, and reading it
-        # as a fitness collapse would produce a wrong session.
-        self.assertIn("acwr of 0", SYSTEM_PROMPT)
-        self.assertIn("not a collapse", SYSTEM_PROMPT)
+        # A gap in the dates is a real break. Garmin reports a low acute load
+        # across it, and that is a true reading, so the prompt must not call it
+        # a measurement fault.
+        flat = " ".join(SYSTEM_PROMPT.split())
+        self.assertIn("A gap in the dates is a break in training", flat)
+        self.assertIn("true reading of a real break", flat)
+        self.assertNotIn("not a collapse in fitness", flat)
+
+    def test_the_prompt_keeps_the_two_load_scales_apart(self) -> None:
+        flat = " ".join(SYSTEM_PROMPT.split())
+        self.assertIn("garmin_daily_load", flat)
+        self.assertIn("activity_load_sum", flat)
+        self.assertIn("Never add them", flat)
+
+    def test_the_prompt_anchors_a_return_to_the_first_sessions_back(self) -> None:
+        self.assertIn("first sessions back", SYSTEM_PROMPT)
+
+    def test_the_prompt_separates_a_missing_measurement_from_a_zero(self) -> None:
+        self.assertIn("A null field was not measured", SYSTEM_PROMPT)
 
     def test_the_prompt_forbids_diagnosis_and_garmin_payloads(self) -> None:
         self.assertIn("Do not diagnose", SYSTEM_PROMPT)

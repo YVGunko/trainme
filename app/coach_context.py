@@ -62,7 +62,7 @@ def build_context(today: date | None = None) -> dict[str, Any]:
     return {
         "profile": profile or {"notes": None, "avoided_sports": []},
         "today": end.isoformat(),
-        "recent_days": days,
+        "recent_days": [_day(row) for row in days],
         "wellness": wellness,
         "recent_activities": [_slim(row) for row in recent],
         "weekly_totals": weekly_summary(older),
@@ -93,6 +93,21 @@ def coverage(context: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _day(row: dict[str, Any]) -> dict[str, Any]:
+    """Rename the Garmin daily load so it cannot be mistaken for activity load.
+
+    Garmin reports two different numbers that both look like "load": the daily
+    training load on a day's metrics, and the training load of one activity in
+    the activity list. They use different scales, so a model given both under
+    the same name would add or compare them.
+    """
+    if "garmin_load_acute" not in row:
+        return dict(row)
+    renamed = {key: value for key, value in row.items() if key != "garmin_load_acute"}
+    renamed["garmin_daily_load"] = row["garmin_load_acute"]
+    return renamed
+
+
 def _slim(row: dict[str, Any]) -> dict[str, Any]:
     """Keep the fields that matter per session, rounded to something readable."""
     return {
@@ -101,7 +116,7 @@ def _slim(row: dict[str, Any]) -> dict[str, Any]:
         "minutes": _round(row.get("duration_sec"), 60),
         "km": _round(row.get("distance_m"), 1000),
         "avg_hr": _round(row.get("avg_hr"), 1),
-        "load": _round(row.get("training_load"), 1),
+        "activity_load": _round(row.get("training_load"), 1),
     }
 
 

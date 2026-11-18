@@ -61,14 +61,14 @@ class WeeklySummaryTest(unittest.TestCase):
         self.assertEqual(first["by_sport_minutes"], {"running": 45.0})
         self.assertEqual(second["sessions"], 2)
         self.assertEqual(second["minutes"], 90.0)
-        self.assertEqual(second["load"], 70.0)
+        self.assertEqual(second["activity_load_sum"], 70.0)
         self.assertEqual(second["by_sport_minutes"], {"cycling": 90.0})
 
     def test_missing_numbers_do_not_break_a_week(self) -> None:
         weeks = weekly_summary([{"day": "2026-11-16", "sport": None}])
         self.assertEqual(weeks[0]["sessions"], 1)
         self.assertEqual(weeks[0]["minutes"], 0.0)
-        self.assertEqual(weeks[0]["load"], 0.0)
+        self.assertEqual(weeks[0]["activity_load_sum"], 0.0)
         self.assertEqual(weeks[0]["by_sport_minutes"], {"other": 0.0})
 
     def test_a_sport_given_twice_accumulates(self) -> None:
