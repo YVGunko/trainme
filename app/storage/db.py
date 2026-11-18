@@ -445,6 +445,121 @@ def save_workout_delivery(
     connection.commit()
 
 
+def load_athlete_profile(connection: psycopg.Connection) -> dict[str, Any] | None:
+    row = connection.execute(
+        "SELECT notes, avoided_sports FROM athlete_profile WHERE id = 1"
+    ).fetchone()
+    if row is None:
+        return None
+    return {"notes": row[0], "avoided_sports": list(row[1] or [])}
+
+
+def save_athlete_profile(
+    connection: psycopg.Connection,
+    notes: str | None,
+    avoided_sports: list[str],
+) -> dict[str, Any]:
+    row = connection.execute(
+        """
+        INSERT INTO athlete_profile (id, notes, avoided_sports)
+        VALUES (1, %s, %s)
+        ON CONFLICT (id) DO UPDATE
+        SET notes = EXCLUDED.notes,
+            avoided_sports = EXCLUDED.avoided_sports,
+            updated_at = now()
+        RETURNING notes, avoided_sports
+        """,
+        (notes, avoided_sports),
+    ).fetchone()
+    connection.commit()
+    return {"notes": row[0], "avoided_sports": list(row[1] or [])}
+
+
+def upsert_activity_history(
+    connection: psycopg.Connection,
+    rows: list[dict[str, Any]],
+) -> int:
+    """Store activity summaries, replacing a previous row for the same activity."""
+    if not rows:
+        return 0
+    with connection.cursor() as cursor:
+        cursor.executemany(
+            """
+            INSERT INTO activity_history (
+                garmin_activity_id, start_local, day, sport, duration_sec,
+                distance_m, avg_hr, max_hr, calories, training_load, updated_at
+            )
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, now())
+            ON CONFLICT (garmin_activity_id) DO UPDATE
+            SET start_local = EXCLUDED.start_local,
+                day = EXCLUDED.day,
+                sport = EXCLUDED.sport,
+                duration_sec = EXCLUDED.duration_sec,
+                distance_m = EXCLUDED.distance_m,
+                avg_hr = COALESCE(EXCLUDED.avg_hr, activity_history.avg_hr),
+                max_hr = COALESCE(EXCLUDED.max_hr, activity_history.max_hr),
+                calories = COALESCE(EXCLUDED.calories, activity_history.calories),
+                training_load = COALESCE(EXCLUDED.training_load, activity_history.training_load),
+                updated_at = now()
+            """,
+            [
+                (
+                    row["garmin_activity_id"],
+                    row["start_local"],
+                    row["day"],
+                    row["sport"],
+                    row["duration_sec"],
+                    row["distance_m"],
+                    row["avg_hr"],
+                    row["max_hr"],
+                    row["calories"],
+                    row["training_load"],
+                )
+                for row in rows
+            ],
+        )
+    connection.commit()
+    return len(rows)
+
+
+def load_activity_history(
+    connection: psycopg.Connection,
+    start: str,
+    end: str,
+    limit: int,
+) -> list[dict[str, Any]]:
+    rows = connection.execute(
+        """
+        SELECT to_char(start_local, 'YYYY-MM-DD HH24:MI:SS'), day::text, sport,
+               duration_sec, distance_m, avg_hr, max_hr, calories, training_load
+        FROM activity_history
+        WHERE day >= %s::date AND day <= %s::date
+        ORDER BY start_local DESC
+        LIMIT %s
+        """,
+        (start, end, limit),
+    ).fetchall()
+    return [
+        {
+            "start_local": row[0],
+            "day": row[1],
+            "sport": row[2],
+            "duration_sec": row[3],
+            "distance_m": row[4],
+            "avg_hr": row[5],
+            "max_hr": row[6],
+            "calories": row[7],
+            "training_load": row[8],
+        }
+        for row in rows
+    ]
+
+
+def activity_history_count(connection: psycopg.Connection) -> int:
+    row = connection.execute("SELECT count(*) FROM activity_history").fetchone()
+    return int(row[0])
+
+
 def _raw_row(row: tuple) -> dict[str, Any]:
     return {
         "kind": row[0],

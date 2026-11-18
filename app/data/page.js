@@ -1,6 +1,7 @@
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { AppHeader } from '@/components/app-header';
+import { AthleteProfile } from '@/components/athlete-profile';
 import { DataTools } from '@/components/data-tools';
 import { WorkoutUpload } from '@/components/workout-upload';
 import { userFromToken } from '@/server/session';
@@ -22,6 +23,7 @@ export default async function DataPage() {
   return (
     <main>
       <AppHeader username={user.username} section="data" />
+      <AthleteProfile />
       <WorkoutUpload />
       <DataTools />
     </main>

@@ -55,6 +55,33 @@ model workout_import {
   created_at        DateTime  @default(now()) @db.Timestamptz(6)
 }
 
+/// The one athlete this app plans for. Free text holds recurring problems the
+/// daily wellness note should not carry, such as a hamstring that keeps flaring.
+model athlete_profile {
+  id            Int      @id @db.SmallInt
+  notes         String?
+  avoided_sports String[] @default([])
+  updated_at    DateTime @default(now()) @updatedAt @db.Timestamptz(6)
+}
+
+/// One activity from the Garmin activity list, kept without its FIT file.
+/// A year of these is small enough to send as training history to the coach.
+model activity_history {
+  garmin_activity_id BigInt    @id
+  start_local        DateTime  @db.Timestamp(6)
+  day                DateTime  @db.Date
+  sport              String?
+  duration_sec       Float?
+  distance_m         Float?
+  avg_hr             Float?
+  max_hr             Float?
+  calories           Float?
+  training_load      Float?
+  updated_at         DateTime  @default(now()) @updatedAt @db.Timestamptz(6)
+
+  @@index([day])
+}
+
 /// One Garmin login. The live table only allows id = 1.
 model garmin_account {
   id                  Int      @id @db.SmallInt

@@ -24,6 +24,9 @@ from app.garmin.client import (
 )
 from app.garmin.device import WorkoutDeviceError, WorkoutRateLimited
 from app.garmin.probe import probe_unused
+from app.garmin.history import HistoryPeriodError, import_history
+from app.profile import ProfileError
+from app.athlete import read_profile, write_profile
 from app.garmin.workout import (
     WorkoutDateError,
     WorkoutFitFileError,
@@ -297,6 +300,65 @@ def send_workout_fit(
     except Exception as error:
         logger.warning("Fit workout upload failed: %s", type(error).__name__)
         raise HTTPException(status_code=502, detail="Fit workout upload failed")
+
+
+@app.get("/profile")
+def get_profile(authorization: str | None = Header(default=None)) -> dict:
+    _require_service_secret(authorization)
+    try:
+        return read_profile()
+    except DatabaseNotConfigured:
+        raise HTTPException(status_code=503, detail="Profile storage is not configured")
+    except Exception as error:
+        logger.warning("Profile read failed: %s", type(error).__name__)
+        raise HTTPException(status_code=502, detail="Profile read failed")
+
+
+@app.post("/profile")
+def put_profile(
+    body: dict | None = Body(default=None),
+    authorization: str | None = Header(default=None),
+) -> dict:
+    _require_service_secret(authorization)
+    try:
+        return write_profile(body if isinstance(body, dict) else None)
+    except ProfileError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+    except DatabaseNotConfigured:
+        raise HTTPException(status_code=503, detail="Profile storage is not configured")
+    except Exception as error:
+        logger.warning("Profile write failed: %s", type(error).__name__)
+        raise HTTPException(status_code=502, detail="Profile write failed")
+
+
+@app.post("/history")
+def import_activity_history(
+    body: dict | None = Body(default=None),
+    authorization: str | None = Header(default=None),
+) -> dict:
+    _require_service_secret(authorization)
+    payload = body if isinstance(body, dict) else {}
+    start = payload.get("start")
+    end = payload.get("end")
+    if not isinstance(start, str) or not isinstance(end, str):
+        raise HTTPException(status_code=400, detail="Period dates must be YYYY-MM-DD")
+    try:
+        return import_history(start, end)
+    except HistoryPeriodError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+    except (GarminNotConfigured, DatabaseNotConfigured, EncryptionKeyMissing):
+        raise HTTPException(status_code=503, detail="History import is not configured")
+    except GarminConnectAuthenticationError:
+        logger.warning("Garmin authentication failed")
+        raise HTTPException(status_code=401, detail="Garmin authentication failed")
+    except GarminConnectTooManyRequestsError:
+        raise HTTPException(status_code=429, detail="Garmin rate limit")
+    except (GarminConnectConnectionError, ArchiveError):
+        logger.warning("History import failed")
+        raise HTTPException(status_code=502, detail="History import failed")
+    except Exception as error:
+        logger.warning("History import failed: %s", type(error).__name__)
+        raise HTTPException(status_code=502, detail="History import failed")
 
 
 @app.post("/probe/unused-garmin")
