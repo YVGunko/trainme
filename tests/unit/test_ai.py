@@ -246,6 +246,8 @@ class PromptTest(unittest.TestCase):
         self.assertIn("A target is never allowed on strength, yoga, or mobility", flat)
         self.assertIn('A reps step needs an "exercise"', flat)
         self.assertIn("never on a run or a ride", flat)
+        # A reps warmup was refused with "This step ends on time".
+        self.assertIn("always end on time, in every sport", flat)
 
     def test_the_prompt_is_a_stable_prefix(self) -> None:
         first = build_messages({"today": "2026-11-18"})

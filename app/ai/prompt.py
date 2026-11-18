@@ -63,6 +63,9 @@ Rules that depend on the sport. These are enforced, not advice:
 - running and cycling: "end" is time or distance. A step may carry a target.
 - strength_training, yoga, mobility: "end" is time or reps. A reps step needs an
   "exercise". Load goes in "weight_kg" and needs an "exercise" too.
+- warmup, recovery, and cooldown always end on time, in every sport. Never give
+  them reps or distance, even in a strength session.
+- rest always ends on time.
 - A target is never allowed on strength, yoga, or mobility. Zones and wattages
   mean nothing there; use reps and weight instead.
 - Distance is never allowed on strength, yoga, or mobility.
@@ -72,8 +75,10 @@ Rules that depend on the sport. These are enforced, not advice:
 - A secondary_target requires a target.
 
 For a strength session, this is the shape the app accepts:
+{"kind": "warmup", "end": {"type": "time", "seconds": 300}}
 {"kind": "interval", "end": {"type": "reps", "count": 10},
  "exercise": "<catalog name>", "weight_kg": 20}
+{"kind": "cooldown", "end": {"type": "time", "seconds": 300}}
 
 How to read the data:
 - profile.notes is written by the athlete on purpose. Treat it as a standing

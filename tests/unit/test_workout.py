@@ -190,6 +190,29 @@ class GeneralWorkoutTest(unittest.TestCase):
         self.assertEqual(step["weightValue"], 10.0)
         self.assertEqual(step["weightUnit"]["unitKey"], "kilogram")
 
+    def test_a_reps_warmup_names_the_step_that_is_wrong(self) -> None:
+        # A refusal has to say which step to fix, not just that something is off.
+        with self.assertRaises(WorkoutSpecError) as caught:
+            build_workout(
+                {
+                    "name": "Strength",
+                    "sport": "strength_training",
+                    "blocks": [
+                        {
+                            "steps": [
+                                {
+                                    "kind": "warmup",
+                                    "end": {"type": "reps", "count": 10},
+                                    "exercise": "Goblet Squat",
+                                }
+                            ]
+                        }
+                    ],
+                }
+            )
+        self.assertIn("warmup", str(caught.exception))
+        self.assertIn("reps", str(caught.exception))
+
     def test_rejects_a_named_exercise_on_a_run(self) -> None:
         with self.assertRaises(WorkoutSpecError):
             build_workout(

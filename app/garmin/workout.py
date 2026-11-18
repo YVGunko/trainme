@@ -461,13 +461,13 @@ def _make_step(step: Any, order: int, sport: str) -> ExecutableStep:
         raise WorkoutSpecError("A target belongs on an interval, warmup, recovery, or cooldown step")
 
     if kind == "warmup":
-        built = _timed_step(create_warmup_step, _seconds(end), order, target, secondary)
+        built = _timed_step(create_warmup_step, _seconds(end, "warmup"), order, target, secondary)
     elif kind == "cooldown":
-        built = _timed_step(create_cooldown_step, _seconds(end), order, target, secondary)
+        built = _timed_step(create_cooldown_step, _seconds(end, "cooldown"), order, target, secondary)
     elif kind == "recovery":
-        built = _timed_step(create_recovery_step, _seconds(end), order, target, secondary)
+        built = _timed_step(create_recovery_step, _seconds(end, "recovery"), order, target, secondary)
     elif kind == "rest":
-        built = create_strength_rest_step(_seconds(end), order)
+        built = create_strength_rest_step(_seconds(end, "rest"), order)
     elif end["type"] == "reps":
         entry = _catalog(exercise)
         count = _plain_int(end["count"], "count")
@@ -618,9 +618,12 @@ def _end(value: Any) -> dict[str, Any]:
     return value
 
 
-def _seconds(end: dict[str, Any]) -> float:
+def _seconds(end: dict[str, Any], kind: str | None = None) -> float:
     if end["type"] != "time":
-        raise WorkoutSpecError("This step ends on time")
+        # Naming the step is what makes a refusal actionable: a bare "this step
+        # ends on time" gives the caller nothing to fix.
+        label = f"The {kind} step" if kind else "This step"
+        raise WorkoutSpecError(f"{label} must end on time, not on {end['type']}")
     return _positive_number(end["seconds"], "seconds")
 
 
