@@ -44,6 +44,25 @@ _CATALOG: list[tuple[dict[str, str], list[str]]] = [
     (entry, _tokens(entry["name"])) for entry in exercises.EXERCISES
 ]
 
+# Words that describe how an exercise is done rather than which one it is. They
+# cannot prove a match, and they cannot anchor a suggestion.
+_GENERIC = {
+    "the", "a", "with", "and", "on", "of", "to", "in", "for",
+    "single", "leg", "alternating", "both", "arm", "side",
+    "weighted", "banded", "barbell", "dumbbell", "cable", "machine", "band",
+    "swiss", "ball", "stability", "static", "standing", "seated", "kneeling",
+    "lying", "circuit", "raise", "press", "pull", "curl", "extension", "hold",
+}
+
+# How much of a query a suggestion must share. Half is enough for "side-lying
+# hip abduction" and too little for anything matching on a single generic word.
+_MIN_SHARE = 0.5
+
+_FREQUENCY: dict[str, int] = {}
+for _entry, _words in _CATALOG:
+    for _word in set(_words):
+        _FREQUENCY[_word] = _FREQUENCY.get(_word, 0) + 1
+
 
 @dataclass
 class Match:
@@ -88,11 +107,38 @@ def match_exercise(name: Any) -> Match:
             return Match(query=query, outcome=CLOSEST, entry=core[0])
         return Match(query=query, outcome=AMBIGUOUS, candidates=_sorted(core))
 
-    # A word-subset search is deliberately not used here: matching "Nordic
-    # Hamstring Curl" to any name sharing one word would invent a movement the
-    # athlete did not ask for, which is worse than asking.
-    return Match(query=query, outcome=MISSING)
+    return Match(query=query, outcome=MISSING, candidates=neighbours(query))
 
+
+def neighbours(query: str, limit: int = 8) -> list[dict[str, str]]:
+    """Return catalog names that share the rarest distinctive word of a query.
+
+    This is what turns "Side-Lying Hip Abduction" into "Standing Hip Abduction"
+    instead of nothing. It is a suggestion, never an answer: the caller still has
+    to ask, because sharing a word proves similarity and not identity.
+
+    The rarest word is the anchor. Requiring a shared word at all would let
+    "Pallof Press" match every press in the catalog, and there is no Pallof
+    press here at all.
+    """
+    wanted = set(_tokens(query))
+    distinctive = wanted - _GENERIC
+    if not distinctive:
+        return []
+    anchor = min(distinctive, key=lambda word: (_FREQUENCY.get(word, 0), word))
+    found: list[tuple[float, int, str, dict[str, str]]] = []
+    for entry, words in _CATALOG:
+        if anchor not in words:
+            continue
+        shared = wanted & set(words)
+        if not shared & distinctive:
+            continue
+        share = len(shared) / len(wanted)
+        if share < _MIN_SHARE:
+            continue
+        found.append((share, -len(words), entry["name"], entry))
+    found.sort(reverse=True)
+    return [entry for _, _, _, entry in found[:limit]]
 
 def _sorted(entries: list[dict[str, str]]) -> list[dict[str, str]]:
     return sorted(entries, key=lambda entry: (len(entry["name"]), entry["name"]))

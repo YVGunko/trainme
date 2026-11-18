@@ -26,11 +26,18 @@ class QuestionTest(unittest.TestCase):
 
     def test_the_question_carries_candidates_only_for_ambiguous_names(self) -> None:
         ambiguous = match_exercise("Glute Bridge")
-        missing = match_exercise("Nordic Hamstring Curl")
+        missing = match_exercise("Pallof Press")
         payload = exercise_resolve._question([ambiguous, missing])
         by_query = {item["movement"]: item["candidates"] for item in payload}
         self.assertTrue(by_query["Glute Bridge"])
-        self.assertEqual(by_query["Nordic Hamstring Curl"], [])
+        # Nothing close exists for this one, so there is nothing to offer.
+        self.assertEqual(by_query["Pallof Press"], [])
+
+    def test_a_missing_name_with_close_suggestions_still_gets_asked(self) -> None:
+        # A name the catalog lacks but nearly holds is worth one question.
+        match = match_exercise("Side-Lying Hip Abduction")
+        payload = exercise_resolve._question([match])
+        self.assertTrue(payload[0]["candidates"])
 
     def test_the_question_does_not_carry_the_training_context(self) -> None:
         # The second call must stay narrow; re-sending the athlete's data would

@@ -22,7 +22,7 @@ import json
 from typing import Any
 
 from app.ai import client
-from app.ai.exercise_match import AMBIGUOUS, MISSING, Match, describe_candidates
+from app.ai.exercise_match import describe_candidates
 
 SYSTEM_PROMPT = """You match exercise names to a catalog of fixed names.
 
@@ -65,9 +65,13 @@ def resolve(unresolved: list[Match]) -> dict[str, str | None]:
 def _question(unresolved: list[Match]) -> list[dict[str, Any]]:
     items: list[dict[str, Any]] = []
     for match in unresolved:
-        item: dict[str, Any] = {"movement": match.query, "candidates": []}
-        if match.outcome == AMBIGUOUS:
-            item["candidates"] = describe_candidates(match)
+        # Both an ambiguous name and an unnamed one carry candidates: the first
+        # because several names fit, the second because a few are close. A name
+        # with no candidate at all still goes in, so the answer says so.
+        item: dict[str, Any] = {
+            "movement": match.query,
+            "candidates": describe_candidates(match),
+        }
         items.append(item)
     return items
 

@@ -70,12 +70,24 @@ class MissingMatchTest(unittest.TestCase):
         self.assertEqual(match.candidates, [])
         self.assertTrue(match.needs_question)
 
-    def test_one_shared_word_does_not_count_as_a_match(self) -> None:
-        # "Bird Dog" shares nothing, and a subset search would happily return
-        # something unrelated.
-        for name in ("Bird Dog", "Pallof Press", "Hip Hinge"):
+    def test_a_missing_name_still_offers_close_names(self) -> None:
+        # "Side-Lying Hip Abduction" is not in the catalog, but two of its words
+        # point at real entries, and offering them lets the coach choose.
+        match = match_exercise("Side-Lying Hip Abduction")
+        self.assertEqual(match.outcome, MISSING)
+        self.assertIsNone(match.entry)
+        names = describe_candidates(match)
+        self.assertTrue(names)
+        self.assertTrue(any("Abduction" in name for name in names))
+
+    def test_one_generic_word_does_not_offer_a_crowd(self) -> None:
+        # "Pallof Press" would match every press in the catalog if a single
+        # shared word were enough, and there is no Pallof press here.
+        for name in ("Pallof Press", "Hip Hinge", "Bird Dog", "Clamshell"):
             with self.subTest(name=name):
-                self.assertEqual(match_exercise(name).outcome, MISSING)
+                match = match_exercise(name)
+                self.assertEqual(match.outcome, MISSING)
+                self.assertEqual(match.candidates, [])
 
     def test_empty_and_non_string_input_is_missing(self) -> None:
         for value in ("", "   ", None, 5, []):
