@@ -565,6 +565,37 @@ def activity_history_count(connection: psycopg.Connection) -> int:
     return int(row[0])
 
 
+_DAY_COLUMNS = (
+    "resting_hr",
+    "overnight_hrv",
+    "hrv_status",
+    "sleep_duration_sec",
+    "sleep_score",
+    "readiness_score",
+    "readiness_level",
+    "training_status",
+    "garmin_load_acute",
+    "garmin_load_chronic",
+    "garmin_acwr",
+)
+
+
+def load_days(connection: psycopg.Connection, limit: int) -> list[dict[str, Any]]:
+    """Return the most recent stored days, newest last, with their HRV value."""
+    columns = ", ".join(_DAY_COLUMNS)
+    rows = connection.execute(
+        f"""
+        SELECT to_char(date, 'YYYY-MM-DD'), {columns}
+        FROM daily_metrics
+        ORDER BY date DESC
+        LIMIT %s
+        """,
+        (limit,),
+    ).fetchall()
+    found = [{"date": row[0], **dict(zip(_DAY_COLUMNS, row[1:]))} for row in rows]
+    return list(reversed(found))
+
+
 def load_recent_days(
     connection: psycopg.Connection,
     start: str,

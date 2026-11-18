@@ -14,6 +14,7 @@ from app.garmin.archive import (
     PeriodError,
     archive_latest,
     archive_period,
+    refresh_stored_days,
 )
 from app.garmin.client import (
     GarminConnectAuthenticationError,
@@ -43,6 +44,7 @@ from app.garmin.workout_probe import probe_workout_device
 from app.normalize.fit import NormalizeError
 from app.normalize.load import normalize_activity, normalize_latest
 from app.storage.blob import BlobNotConfigured, BlobReadError, BlobUploadError
+from app.storage.db import connect, ensure_schema, load_days
 
 logger = logging.getLogger(__name__)
 
@@ -377,6 +379,52 @@ def read_context(authorization: str | None = Header(default=None)) -> dict:
         # logs, and it carries no data.
         raise HTTPException(status_code=502, detail=f"Context read failed: {name}")
     return {"context": context, "coverage": coverage(context)}
+
+
+@app.post("/maintenance/refresh-days")
+def refresh_days(authorization: str | None = Header(default=None)) -> dict:
+    """Re-read daily Garmin metrics for days already stored.
+
+    This is the same work as scripts/refresh_stored_days.py, exposed so it runs
+    where the Garmin token and its key already live. Re-reading a day is what
+    fills a field that earlier code did not store, such as overnight HRV.
+    """
+    _require_service_secret(authorization)
+    try:
+        result = refresh_stored_days()
+    except (GarminNotConfigured, DatabaseNotConfigured, EncryptionKeyMissing):
+        raise HTTPException(status_code=503, detail="Day refresh is not configured")
+    except GarminConnectAuthenticationError:
+        logger.warning("Garmin authentication failed")
+        raise HTTPException(status_code=401, detail="Garmin authentication failed")
+    except GarminConnectTooManyRequestsError:
+        raise HTTPException(status_code=429, detail="Garmin rate limit")
+    except GarminConnectConnectionError:
+        logger.warning("Day refresh failed")
+        raise HTTPException(status_code=502, detail="Day refresh failed")
+    except Exception as error:
+        logger.warning("Day refresh failed: %s", type(error).__name__)
+        raise HTTPException(status_code=502, detail="Day refresh failed")
+    return result
+
+
+@app.get("/days")
+def read_days(
+    limit: int = Query(default=30, ge=1, le=90),
+    authorization: str | None = Header(default=None),
+) -> dict:
+    """Return stored daily metrics, newest last, to check what a refresh filled."""
+    _require_service_secret(authorization)
+    try:
+        with connect() as connection:
+            ensure_schema(connection)
+            rows = load_days(connection, limit)
+    except DatabaseNotConfigured:
+        raise HTTPException(status_code=503, detail="Day storage is not configured")
+    except Exception as error:
+        logger.warning("Day read failed: %s", type(error).__name__)
+        raise HTTPException(status_code=502, detail="Day read failed")
+    return {"days": rows}
 
 
 @app.post("/probe/unused-garmin")
