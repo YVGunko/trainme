@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { FIT_REASONS } from '@/lib/fit-reasons';
+import { FIT_REASONS, hasNumericWarning, warningTexts } from '@/lib/fit-reasons';
 
 const MAX_FILE_BYTES = 256 * 1024;
 
@@ -15,6 +15,8 @@ export function WorkoutUpload() {
   const [sending, setSending] = useState(false);
   const [probeId, setProbeId] = useState('');
   const [probing, setProbing] = useState(false);
+  const [warnings, setWarnings] = useState([]);
+  const [warningIsNumeric, setWarningIsNumeric] = useState(false);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
 
@@ -72,6 +74,8 @@ export function WorkoutUpload() {
     event.preventDefault();
     setError('');
     setMessage('');
+    setWarnings([]);
+    setWarningIsNumeric(false);
     if (!file) {
       setError('Выберите файл FIT');
       return;
@@ -101,9 +105,12 @@ export function WorkoutUpload() {
         result.stored ? `Шаблон ${result.workout_id} создан` : `Шаблон ${result.workout_id} уже был загружен`,
         result.date ? `поставлен на ${result.date}` : '',
         result.pushed ? `отправлен на устройство ${result.device_id}` : '',
-        Array.isArray(result.warnings) ? result.warnings.join('; ') : '',
       ];
       setMessage(parts.filter(Boolean).join(', '));
+      // The file's own problems are shown apart from the result, because the
+      // workout is already in Garmin and the numbers may need a second look.
+      setWarnings(warningTexts(result.warnings));
+      setWarningIsNumeric(hasNumericWarning(result.warnings));
     } catch {
       setError('Загрузка не удалась');
     } finally {
@@ -174,6 +181,13 @@ export function WorkoutUpload() {
         </button>
       </form>
       {message ? <p className="muted">{message}</p> : null}
+      {warnings.length > 0 ? (
+        <div className={warningIsNumeric ? 'error' : 'muted'}>
+          {warnings.map((text, index) => (
+            <p key={index}>{text}</p>
+          ))}
+        </div>
+      ) : null}
       {error ? <p className="error">{error}</p> : null}
     </section>
   );

@@ -439,6 +439,77 @@ class WorkoutFitTargetTest(unittest.TestCase):
             parse_workout_fit(payload)
 
 
+class WorkoutFitValueWarningTest(unittest.TestCase):
+    """A file whose numbers are wrong is readable, but must not pass silently."""
+
+    def test_a_step_shorter_than_a_second_is_reported(self) -> None:
+        # A generator that writes minutes into the millisecond field gives 0.24 s.
+        payload = (
+            _WorkoutFit()
+            .file_id()
+            .workout("cycling", "Broken units")
+            .time_step("warmup", 0.24)
+            .time_step("interval", 0.18)
+            .build()
+        )
+        _, warnings = parse_workout_fit(payload)
+        short = [w for w in warnings if w["code"] == "short_steps"]
+        self.assertEqual(len(short), 1)
+        self.assertEqual(short[0]["count"], 2)
+        self.assertEqual(short[0]["smallest"], 0.18)
+
+    def test_a_workout_under_a_minute_is_reported(self) -> None:
+        payload = (
+            _WorkoutFit()
+            .file_id()
+            .workout("cycling", "Too short")
+            .time_step("warmup", 0.24)
+            .build()
+        )
+        _, warnings = parse_workout_fit(payload)
+        short = [w for w in warnings if w["code"] == "short_workout"]
+        self.assertEqual(len(short), 1)
+        self.assertAlmostEqual(short[0]["total_seconds"], 0.24)
+
+    def test_a_repeat_counts_toward_the_total(self) -> None:
+        payload = (
+            _WorkoutFit()
+            .file_id()
+            .workout("cycling", "Repeated")
+            .time_step("interval", 30)
+            .repeat(first_step=0, count=3)
+            .build()
+        )
+        _, warnings = parse_workout_fit(payload)
+        self.assertFalse(any(w["code"] == "short_workout" for w in warnings))
+
+    def test_a_distance_step_shorter_than_a_meter_is_reported(self) -> None:
+        payload = (
+            _WorkoutFit()
+            .file_id()
+            .workout("running", "Broken distance")
+            .distance_step("interval", 0.5)
+            .build()
+        )
+        _, warnings = parse_workout_fit(payload)
+        short = [w for w in warnings if w["code"] == "short_distance_steps"]
+        self.assertEqual(len(short), 1)
+        self.assertEqual(short[0]["smallest"], 0.5)
+
+    def test_a_normal_workout_has_no_value_warning(self) -> None:
+        payload = (
+            _WorkoutFit()
+            .file_id()
+            .workout("cycling", "Normal")
+            .time_step("warmup", 600)
+            .time_step("interval", 1200)
+            .time_step("cooldown", 300)
+            .build()
+        )
+        _, warnings = parse_workout_fit(payload)
+        self.assertEqual(warnings, [])
+
+
 class RealGarminWorkoutFitTest(unittest.TestCase):
     """Parse the file a Garmin Edge 840 wrote, not a fixture we invented."""
 
@@ -453,10 +524,18 @@ class RealGarminWorkoutFitTest(unittest.TestCase):
         self.assertEqual(len(spec["blocks"]), 1)
         steps = spec["blocks"][0]["steps"]
         self.assertEqual(len(steps), 16)
-        self.assertEqual(warnings, [
-            "16 FIT step name(s) are not kept",
-            "16 FIT step note(s) are not kept",
-        ])
+        # The file is sound: only its step names and notes are lost.
+        self.assertEqual(
+            warnings,
+            [
+                {"code": "step_names_dropped", "count": 16},
+                {"code": "notes_dropped", "count": 16},
+            ],
+        )
+
+    def test_a_real_file_raises_no_numeric_warning(self) -> None:
+        _, warnings = parse_workout_fit(self._payload())
+        self.assertFalse(any(w["code"].startswith("short_") for w in warnings))
 
     def test_a_warmup_step_keeps_its_power_zone(self) -> None:
         # Garmin puts a power target on the warmup, which used to be rejected.

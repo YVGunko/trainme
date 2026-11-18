@@ -48,6 +48,14 @@ _TIMED_KINDS = {"warmup", "cooldown", "recovery", "rest"}
 # cooldown step too, so a target does not mean interval.
 _TARGETABLE_KINDS = {"interval", "warmup", "recovery", "cooldown"}
 
+# Sanity limits for a file this app agrees to send. A step under a second, or a
+# whole workout under a minute, means the file's units are wrong, not that
+# someone planned a four second workout. These are warnings, not refusals: the
+# file is still readable, and the caller decides.
+_MIN_STEP_SECONDS = 1.0
+_MIN_STEP_METERS = 1.0
+_MIN_TOTAL_SECONDS = 60.0
+
 # A custom FIT target holds percent of the user's maximum up to this value and
 # beats per minute plus it above it. Power uses percent of threshold power up
 # to 1000 and watts plus it above it.
@@ -87,21 +95,22 @@ class WorkoutFitError(Exception):
         self.reason = reason
 
 
-def parse_workout_fit(payload: bytes) -> tuple[dict[str, Any], list[str]]:
+def parse_workout_fit(payload: bytes) -> tuple[dict[str, Any], list[dict[str, Any]]]:
     """Return the workout description and what the description could not hold."""
     workbook, steps = _read(payload)
     name = _text(workbook, 8)
     if name is None:
         raise WorkoutFitError("FIT workout has no name")
+    blocks = _blocks(steps)
     spec: dict[str, Any] = {
         "name": name,
         "sport": _sport(workbook),
-        "blocks": _blocks(steps),
+        "blocks": blocks,
     }
     description = _text(workbook, 17)
     if description is not None:
         spec["description"] = description
-    return spec, _warnings(steps)
+    return spec, _warnings(steps, blocks)
 
 
 def _read(payload: bytes) -> tuple[Any, list[tuple[int, Any]]]:
@@ -371,15 +380,70 @@ def _display_name(category: str, exercise: str) -> str | None:
     return _display_names.get((category.upper(), exercise.upper()))
 
 
-def _warnings(steps: list[tuple[int, Any]]) -> list[str]:
+def _warnings(steps: list[tuple[int, Any]], blocks: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Return what the file holds that the description or Garmin cannot take.
+
+    Each entry carries a ``code`` so the web layer can say it in its own words,
+    plus the counts and values needed to say something specific.
+    """
     with_notes = sum(1 for _, frame in steps if _text(frame, _notes_field) is not None)
     named = sum(1 for _, frame in steps if _text(frame, _step_name_field) is not None)
-    warnings: list[str] = []
+    warnings: list[dict[str, Any]] = []
     if named:
-        warnings.append(f"{named} FIT step name(s) are not kept")
+        warnings.append({"code": "step_names_dropped", "count": named})
     if with_notes:
-        warnings.append(f"{with_notes} FIT step note(s) are not kept")
+        warnings.append({"code": "notes_dropped", "count": with_notes})
+    warnings.extend(_short_step_warnings(blocks))
     return warnings
+
+
+def _short_step_warnings(blocks: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Warn when the file's time or distance values look like the wrong unit.
+
+    A generator that writes minutes into the millisecond field produces steps
+    of 0.24 s, which Garmin would accept as a four second workout. The file is
+    still readable, so this warns instead of refusing.
+    """
+    short_seconds: list[float] = []
+    short_meters: list[float] = []
+    total = 0.0
+    for block in _iter_blocks(blocks):
+        end = block["end"]
+        repeats = block.get("repeat", 1)
+        if end["type"] == "time":
+            total += end["seconds"] * repeats
+            if end["seconds"] < _MIN_STEP_SECONDS:
+                short_seconds.append(end["seconds"])
+        elif end["type"] == "distance":
+            if end["meters"] < _MIN_STEP_METERS:
+                short_meters.append(end["meters"])
+    warnings: list[dict[str, Any]] = []
+    if short_seconds:
+        warnings.append(
+            {
+                "code": "short_steps",
+                "count": len(short_seconds),
+                "smallest": min(short_seconds),
+            }
+        )
+    if short_meters:
+        warnings.append(
+            {
+                "code": "short_distance_steps",
+                "count": len(short_meters),
+                "smallest": min(short_meters),
+            }
+        )
+    if total and total < _MIN_TOTAL_SECONDS:
+        warnings.append({"code": "short_workout", "total_seconds": total})
+    return warnings
+
+
+def _iter_blocks(blocks: list[dict[str, Any]]) -> Any:
+    """Yield every innermost step with the repeat count of its block."""
+    for block in blocks:
+        for step in block["steps"]:
+            yield {**step, "repeat": block.get("repeat", 1)}
 
 
 def _step_index(position: int, frame: Any) -> int:

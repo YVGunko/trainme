@@ -413,6 +413,31 @@ class UploadWithPushTest(unittest.TestCase):
 
 
 class ImportFitWorkoutTest(unittest.TestCase):
+    def test_a_file_with_wrong_units_still_uploads_and_reports_it(self) -> None:
+        client = MagicMock()
+        client.client.dumps.return_value = "{}"
+        client.profile_id = 7
+        client.upload_workout.return_value = {"workoutId": 77}
+        with _patched_client(client):
+            with patch("app.garmin.workout.find_workout_import", return_value=None):
+                with patch("app.garmin.workout.insert_workout_import"):
+                    result = import_workout_fit({"content_base64": _base64(_broken_units_fit())})
+        codes = {warning["code"] for warning in result["warnings"]}
+        self.assertIn("short_steps", codes)
+        self.assertIn("short_workout", codes)
+        self.assertEqual(result["workout_id"], 77)
+
+    def test_a_sound_file_reports_no_value_warning(self) -> None:
+        client = MagicMock()
+        client.client.dumps.return_value = "{}"
+        client.profile_id = 7
+        client.upload_workout.return_value = {"workoutId": 77}
+        with _patched_client(client):
+            with patch("app.garmin.workout.find_workout_import", return_value=None):
+                with patch("app.garmin.workout.insert_workout_import"):
+                    result = import_workout_fit({"content_base64": _base64(_running_fit())})
+        self.assertNotIn("warnings", result)
+
     def test_a_new_file_is_uploaded_once_and_remembered(self) -> None:
         client = MagicMock()
         client.client.dumps.return_value = "{}"
@@ -668,6 +693,20 @@ def _definition(local: int, message: int, fields: list[tuple[int, int, int]]) ->
     for number, size, base in fields:
         payload += bytes([number, size, base])
     return bytes(payload)
+
+
+def _broken_units_fit() -> bytes:
+    """A workout whose step times were written in minutes, so they read as 0.24 s."""
+    data = _definition(0, 0, [(0, 1, 0x00)]) + b"\x00" + struct.pack("<B", 5)
+    name = b"Broken\x00"
+    data += _definition(1, 26, [(4, 1, 0x00), (8, len(name), 0x07)])
+    data += b"\x01" + struct.pack("<B", 2) + name
+    data += _definition(2, 27, [(254, 2, 0x84), (1, 1, 0x00), (2, 4, 0x86), (3, 1, 0x00), (7, 1, 0x00)])
+    data += b"\x02" + struct.pack("<H", 0) + struct.pack("<BIBB", 0, 240, 2, 2)
+    data += b"\x02" + struct.pack("<H", 1) + struct.pack("<BIBB", 0, 180, 2, 2)
+    header = struct.pack("<BBHI4s", 14, 0x20, 2132, len(data), b".FIT")
+    header += struct.pack("<H", compute_crc(header))
+    return header + data + struct.pack("<H", compute_crc(data))
 
 
 def _activity_fit() -> bytes:
