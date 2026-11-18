@@ -371,8 +371,11 @@ def read_context(authorization: str | None = Header(default=None)) -> dict:
     except DatabaseNotConfigured:
         raise HTTPException(status_code=503, detail="Context storage is not configured")
     except Exception as error:
-        logger.warning("Context read failed: %s", type(error).__name__)
-        raise HTTPException(status_code=502, detail="Context read failed")
+        name = type(error).__name__
+        logger.warning("Context read failed: %s", name)
+        # The failure name is the only useful clue a caller has without Render
+        # logs, and it carries no data.
+        raise HTTPException(status_code=502, detail=f"Context read failed: {name}")
     return {"context": context, "coverage": coverage(context)}
 
 

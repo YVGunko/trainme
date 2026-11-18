@@ -1,4 +1,5 @@
 import { getRender } from '@/server/render';
+import { renderFailure } from '@/server/render-failure';
 import { requireUser } from '@/server/session';
 
 export const runtime = 'nodejs';
@@ -14,14 +15,7 @@ export async function GET(request) {
     if (error?.message === 'unauthorized') {
       return Response.json({ ok: false, error: 'Нужно войти' }, { status: 401 });
     }
-    const status = error?.status || 500;
-    const httpStatus = status === 503 ? 503 : 502;
-    return Response.json({ ok: false, error: messageFor(status) }, { status: httpStatus });
+    const failure = renderFailure(error, 'Контекст недоступен');
+    return Response.json({ ok: false, error: failure.error }, { status: failure.status });
   }
-}
-
-function messageFor(status) {
-  if (status === 401) return 'Сервис не принял секрет';
-  if (status === 503) return 'Сервис контекста не настроен';
-  return 'Контекст недоступен. Подождите минуту и повторите';
 }

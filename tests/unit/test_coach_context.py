@@ -112,6 +112,26 @@ class ContextRouteTest(unittest.TestCase):
         self.assertEqual(body["context"], context)
         self.assertEqual(body["coverage"]["history_count"], 0)
 
+    def test_a_failure_names_its_class_so_it_can_be_diagnosed(self) -> None:
+        client = TestClient(app)
+        with patch.dict(os.environ, {"SERVICE_SECRET": "expected"}, clear=True):
+            with patch(
+                "app.main.build_context",
+                side_effect=RuntimeError("boom"),
+            ):
+                response = client.get("/context", headers={"Authorization": "Bearer expected"})
+        self.assertEqual(response.status_code, 502)
+        self.assertIn("RuntimeError", response.json()["detail"])
+
+    def test_a_missing_database_is_reported_as_unconfigured(self) -> None:
+        from app.storage.db import DatabaseNotConfigured
+
+        client = TestClient(app)
+        with patch.dict(os.environ, {"SERVICE_SECRET": "expected"}, clear=True):
+            with patch("app.main.build_context", side_effect=DatabaseNotConfigured()):
+                response = client.get("/context", headers={"Authorization": "Bearer expected"})
+        self.assertEqual(response.status_code, 503)
+
 
 class NoteNeverLeavesTest(unittest.TestCase):
     """The wellness note is written for the athlete, so it must not be queried."""

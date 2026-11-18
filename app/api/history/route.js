@@ -1,4 +1,5 @@
 import { callRender } from '@/server/render';
+import { renderFailure } from '@/server/render-failure';
 import { requireUser } from '@/server/session';
 
 export const runtime = 'nodejs';
@@ -25,9 +26,10 @@ export async function POST(request) {
     if (error?.message === 'unauthorized') {
       return Response.json({ ok: false, error: 'Нужно войти' }, { status: 401 });
     }
-    const status = error?.status || 500;
-    const httpStatus = status === 400 || status === 503 ? status : status === 429 ? 429 : 502;
-    return Response.json({ ok: false, error: messageFor(status) }, { status: httpStatus });
+    const failure = renderFailure(error, 'История не загружена');
+    // A bad period is the athlete's typo, so keep it a 400.
+    const status = failure.status === 502 && error?.status === 400 ? 400 : failure.status;
+    return Response.json({ ok: false, error: failure.error }, { status });
   }
 }
 
@@ -37,12 +39,4 @@ function validPeriod(start, end) {
   const endDate = Date.parse(`${end}T00:00:00Z`);
   if (!Number.isFinite(startDate) || !Number.isFinite(endDate) || endDate < startDate) return false;
   return Math.round((endDate - startDate) / DAY_MS) + 1 <= 400;
-}
-
-function messageFor(status) {
-  if (status === 400) return 'Проверьте даты. Период не длиннее 400 дней';
-  if (status === 401) return 'Сервис не принял секрет';
-  if (status === 429) return 'Garmin ограничил запросы. Подождите и повторите';
-  if (status === 503) return 'Сервис истории не настроен';
-  return 'Загрузка истории не удалась. Подождите минуту и повторите';
 }
