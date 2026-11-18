@@ -528,13 +528,18 @@ def load_activity_history(
     end: str,
     limit: int,
 ) -> list[dict[str, Any]]:
+    """Return stored activity summaries oldest first.
+
+    Ascending order matters twice: a model reads the list as a timeline, and a
+    LIMIT on a descending list would keep the oldest rows and drop the newest.
+    """
     rows = connection.execute(
         """
         SELECT to_char(start_local, 'YYYY-MM-DD HH24:MI:SS'), day::text, sport,
                duration_sec, distance_m, avg_hr, max_hr, calories, training_load
         FROM activity_history
         WHERE day >= %s::date AND day <= %s::date
-        ORDER BY start_local DESC
+        ORDER BY start_local ASC
         LIMIT %s
         """,
         (start, end, limit),

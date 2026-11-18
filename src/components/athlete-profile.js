@@ -183,8 +183,9 @@ export function AthleteProfile() {
       </form>
       {coverage ? (
         <p className="muted">
-          История: {coverage.history_count} тренировок
-          {coverage.history_first_day ? `, ${coverage.history_first_day} — ${coverage.history_last_day}` : ''}.
+          Сырых тренировок: {coverage.raw_activity_count} (последние {coverage.raw_window_days} дней).
+          Недель в сводке: {coverage.week_count}
+          {coverage.weeks_first ? `, ${coverage.weeks_first} — ${coverage.weeks_last}` : ''}.
           Детальных дней: {coverage.detail_day_count}. Дней wellness: {coverage.wellness_day_count}.
           Профиль: {coverage.profile_has_notes ? 'заполнен' : 'пуст'}.
         </p>

@@ -5,6 +5,10 @@ imported activity history, the stored daily Garmin metrics, and the scored
 wellness rows. Nothing is a constant about one person, and the free-text
 wellness note is never read, so it cannot reach a model by accident.
 
+A year of raw activities is about 28k tokens. The last fortnight stays raw
+because its detail changes the next session; everything older becomes weekly
+totals, which carry the shape of the year at a fraction of the size.
+
 The shape is stable on purpose. The profile sits first because it never changes
 between requests, which lets a provider with prompt caching bill that prefix at
 the cached rate.
@@ -15,6 +19,7 @@ from __future__ import annotations
 from datetime import date, timedelta
 from typing import Any
 
+from app.history_summary import RAW_DAYS, split_history, weekly_summary
 from app.storage.db import (
     connect,
     ensure_schema,
@@ -43,18 +48,20 @@ def build_context(today: date | None = None) -> dict[str, Any]:
     with connect() as connection:
         ensure_schema(connection)
         profile = load_athlete_profile(connection)
-        history = load_activity_history(
+        rows = load_activity_history(
             connection, history_start.isoformat(), end.isoformat(), HISTORY_LIMIT
         )
         days = load_recent_days(connection, detail_start.isoformat(), end.isoformat())
         wellness = load_subjective_days(connection, detail_start.isoformat(), end.isoformat())
 
+    recent, older = split_history(rows, end)
     return {
         "profile": profile or {"notes": None, "avoided_sports": []},
         "today": end.isoformat(),
         "recent_days": days,
         "wellness": wellness,
-        "history": history,
+        "recent_activities": [_slim(row) for row in recent],
+        "weekly_totals": weekly_summary(older),
     }
 
 
@@ -64,14 +71,17 @@ def coverage(context: dict[str, Any]) -> dict[str, Any]:
     The athlete sees this next to the recommendation: an empty history means the
     import was not run, not that no training happened.
     """
-    history = context.get("history") or []
+    recent = context.get("recent_activities") or []
+    weeks = context.get("weekly_totals") or []
     days = context.get("recent_days") or []
     wellness = context.get("wellness") or []
     return {
         "today": context.get("today"),
-        "history_count": len(history),
-        "history_first_day": history[0]["day"] if history else None,
-        "history_last_day": history[-1]["day"] if history else None,
+        "raw_activity_count": len(recent),
+        "raw_window_days": RAW_DAYS,
+        "week_count": len(weeks),
+        "weeks_first": weeks[0]["week"] if weeks else None,
+        "weeks_last": weeks[-1]["week"] if weeks else None,
         "detail_day_count": len(days),
         "wellness_day_count": len(wellness),
         "profile_has_notes": bool((context.get("profile") or {}).get("notes")),
@@ -79,4 +89,23 @@ def coverage(context: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _slim(row: dict[str, Any]) -> dict[str, Any]:
+    """Keep the fields that matter per session, rounded to something readable."""
+    return {
+        "day": row.get("day"),
+        "sport": row.get("sport"),
+        "minutes": _round(row.get("duration_sec"), 60),
+        "km": _round(row.get("distance_m"), 1000),
+        "avg_hr": _round(row.get("avg_hr"), 1),
+        "load": _round(row.get("training_load"), 1),
+    }
+
+
+def _round(value: Any, divisor: float) -> float | None:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    return round(float(value) / divisor, 1)
+
+
 __all__ = ["DETAIL_DAYS", "HISTORY_DAYS", "HISTORY_LIMIT", "build_context", "coverage"]
+

@@ -30,7 +30,8 @@ class BuildContextTest(unittest.TestCase):
         context = self._build()
         self.assertEqual(context["today"], "2026-11-18")
         self.assertEqual(context["profile"], {"notes": None, "avoided_sports": []})
-        self.assertEqual(context["history"], [])
+        self.assertEqual(context["recent_activities"], [])
+        self.assertEqual(context["weekly_totals"], [])
         self.assertEqual(context["recent_days"], [])
         self.assertEqual(context["wellness"], [])
 
@@ -42,13 +43,34 @@ class BuildContextTest(unittest.TestCase):
         self.assertEqual(context["profile"]["notes"], "hamstring")
 
     def test_history_and_days_are_passed_through_unchanged(self) -> None:
-        history = [{"day": "2026-11-16", "sport": "cycling"}]
+        history = [
+            {"day": "2026-08-03", "sport": "cycling", "duration_sec": 3600.0, "training_load": 50.0},
+        ]
         days = [{"date": "2026-11-17", "resting_hr": 48}]
         wellness = [{"date": "2026-11-17", "injury": 2}]
         context = self._build(history=history, days=days, wellness=wellness)
-        self.assertEqual(context["history"], history)
+        # Old activities become weekly totals, not raw rows.
+        self.assertEqual(len(context["weekly_totals"]), 1)
+        self.assertEqual(context["weekly_totals"][0]["week"], "2026-08-03")
+        self.assertEqual(context["weekly_totals"][0]["sessions"], 1)
+        self.assertEqual(context["recent_activities"], [])
         self.assertEqual(context["recent_days"], days)
         self.assertEqual(context["wellness"], wellness)
+
+    def test_recent_activities_stay_raw_for_a_fortnight(self) -> None:
+        history = [
+            {"day": "2026-11-17", "sport": "cycling", "duration_sec": 3600.0,
+             "distance_m": 30000.0, "avg_hr": 130.0, "training_load": 50.0},
+            {"day": "2026-11-01", "sport": "running", "duration_sec": 1800.0, "training_load": 20.0},
+        ]
+        context = self._build(history=history)
+        self.assertEqual(len(context["recent_activities"]), 1)
+        recent = context["recent_activities"][0]
+        self.assertEqual(recent["day"], "2026-11-17")
+        self.assertEqual(recent["minutes"], 60.0)
+        self.assertEqual(recent["km"], 30.0)
+        self.assertEqual(recent["avg_hr"], 130.0)
+        self.assertEqual(len(context["weekly_totals"]), 1)
 
     def test_history_lookback_spans_a_year(self) -> None:
         with patch("app.coach_context.connect") as connect:
@@ -66,32 +88,33 @@ class BuildContextTest(unittest.TestCase):
         start, end, _limit = history.call_args.args[1:]
         self.assertEqual(end, "2026-11-18")
         self.assertEqual(start, "2025-11-18")
-
-
 class CoverageTest(unittest.TestCase):
-    def test_reports_counts_and_the_history_range(self) -> None:
+    def test_reports_counts_and_the_week_range(self) -> None:
         context = {
             "today": "2026-11-18",
             "profile": {"notes": "hamstring", "avoided_sports": ["running"]},
             "recent_days": [{"date": "2026-11-17"}],
             "wellness": [{"date": "2026-11-17"}],
-            "history": [
-                {"day": "2026-01-02"},
-                {"day": "2026-11-16"},
+            "recent_activities": [{"day": "2026-11-16"}],
+            "weekly_totals": [
+                {"week": "2026-01-05", "sessions": 3},
+                {"week": "2026-11-02", "sessions": 4},
             ],
         }
         report = coverage(context)
-        self.assertEqual(report["history_count"], 2)
-        self.assertEqual(report["history_first_day"], "2026-01-02")
-        self.assertEqual(report["history_last_day"], "2026-11-16")
+        self.assertEqual(report["raw_activity_count"], 1)
+        self.assertEqual(report["week_count"], 2)
+        self.assertEqual(report["weeks_first"], "2026-01-05")
+        self.assertEqual(report["weeks_last"], "2026-11-02")
         self.assertEqual(report["detail_day_count"], 1)
         self.assertTrue(report["profile_has_notes"])
         self.assertEqual(report["avoided_sports"], ["running"])
 
     def test_empty_history_is_reported_as_empty_not_as_no_training(self) -> None:
-        report = coverage({"today": "2026-11-18", "history": []})
-        self.assertEqual(report["history_count"], 0)
-        self.assertIsNone(report["history_first_day"])
+        report = coverage({"today": "2026-11-18", "recent_activities": [], "weekly_totals": []})
+        self.assertEqual(report["raw_activity_count"], 0)
+        self.assertEqual(report["week_count"], 0)
+        self.assertIsNone(report["weeks_first"])
         self.assertFalse(report["profile_has_notes"])
 
 
@@ -103,14 +126,20 @@ class ContextRouteTest(unittest.TestCase):
 
     def test_returns_the_context_and_its_coverage(self) -> None:
         client = TestClient(app)
-        context = {"today": "2026-11-18", "profile": {}, "history": [], "recent_days": [], "wellness": []}
+        context = {
+            "today": "2026-11-18",
+            "profile": {},
+            "history": [],
+            "recent_days": [],
+            "wellness": [],
+        }
         with patch.dict(os.environ, {"SERVICE_SECRET": "expected"}, clear=True):
             with patch("app.main.build_context", return_value=context):
                 response = client.get("/context", headers={"Authorization": "Bearer expected"})
         self.assertEqual(response.status_code, 200)
         body = response.json()
         self.assertEqual(body["context"], context)
-        self.assertEqual(body["coverage"]["history_count"], 0)
+        self.assertEqual(body["coverage"]["week_count"], 0)
 
     def test_a_failure_names_its_class_so_it_can_be_diagnosed(self) -> None:
         client = TestClient(app)
