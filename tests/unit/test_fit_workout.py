@@ -1,6 +1,7 @@
 import struct
 import unittest
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 
 from fitdecode.utils import compute_crc
@@ -236,19 +237,35 @@ class WorkoutFitSportTest(unittest.TestCase):
 
     def test_an_activity_file_is_not_a_workout(self) -> None:
         payload = _WorkoutFit().file_id(kind=4).workout("running", "Run").time_step("warmup", 60).build()
-        with self.assertRaises(WorkoutFitError):
+        with self.assertRaises(WorkoutFitError) as caught:
             parse_workout_fit(payload)
+        self.assertEqual(caught.exception.reason, "activity_file")
+
+    def test_another_fit_file_type_is_named(self) -> None:
+        payload = _WorkoutFit().file_id(kind=6).workout("running", "Run").time_step("warmup", 60).build()
+        with self.assertRaises(WorkoutFitError) as caught:
+            parse_workout_fit(payload)
+        self.assertEqual(caught.exception.reason, "other_file")
+
+    def test_a_missing_file_id_is_reported_as_unreadable(self) -> None:
+        payload = _WorkoutFit().workout("running", "Run").time_step("warmup", 60).build()
+        with self.assertRaises(WorkoutFitError) as caught:
+            parse_workout_fit(payload)
+        self.assertEqual(caught.exception.reason, "unreadable")
 
     def test_a_file_without_a_workout_message_is_rejected(self) -> None:
         payload = _WorkoutFit().file_id().time_step("warmup", 60).build()
-        with self.assertRaises(WorkoutFitError):
+        with self.assertRaises(WorkoutFitError) as caught:
             parse_workout_fit(payload)
+        self.assertEqual(caught.exception.reason, "no_workout_message")
 
     def test_junk_and_empty_payloads_are_rejected(self) -> None:
-        with self.assertRaises(WorkoutFitError):
+        with self.assertRaises(WorkoutFitError) as empty:
             parse_workout_fit(b"")
-        with self.assertRaises(WorkoutFitError):
+        self.assertEqual(empty.exception.reason, "empty")
+        with self.assertRaises(WorkoutFitError) as junk:
             parse_workout_fit(b"not a fit file")
+        self.assertEqual(junk.exception.reason, "unreadable")
 
     def test_a_truncated_file_is_rejected(self) -> None:
         payload = _running("running")
@@ -385,12 +402,26 @@ class WorkoutFitTargetTest(unittest.TestCase):
         with self.assertRaises(WorkoutFitError):
             parse_workout_fit(payload)
 
-    def test_a_target_on_a_warmup_is_rejected(self) -> None:
+    def test_a_target_on_a_warmup_is_kept(self) -> None:
+        # Garmin writes power targets on warmup steps, so this must parse.
         payload = (
             _WorkoutFit()
             .file_id()
             .workout("cycling", "Warm")
             .time_step("warmup", 600, target=("power", 2))
+            .build()
+        )
+        spec, _ = parse_workout_fit(payload)
+        step = spec["blocks"][0]["steps"][0]
+        self.assertEqual(step["kind"], "warmup")
+        self.assertEqual(step["target"], {"type": "power_zone", "zone": 2})
+
+    def test_a_target_on_a_rest_step_is_rejected(self) -> None:
+        payload = (
+            _WorkoutFit()
+            .file_id()
+            .workout("training", "Rest", sub_sport="strength_training")
+            .time_step("rest", 60, target=("heart_rate", 2))
             .build()
         )
         with self.assertRaises(WorkoutFitError):
@@ -406,6 +437,57 @@ class WorkoutFitTargetTest(unittest.TestCase):
         )
         with self.assertRaises(WorkoutFitError):
             parse_workout_fit(payload)
+
+
+class RealGarminWorkoutFitTest(unittest.TestCase):
+    """Parse the file a Garmin Edge 840 wrote, not a fixture we invented."""
+
+    def _payload(self) -> bytes:
+        path = Path(__file__).resolve().parents[1] / "fixtures" / "adaptive-endurance-ride.fit"
+        return path.read_bytes()
+
+    def test_a_real_workout_file_is_read(self) -> None:
+        spec, warnings = parse_workout_fit(self._payload())
+        self.assertEqual(spec["sport"], "cycling")
+        self.assertEqual(spec["name"], "Adaptive Endurance Ride")
+        self.assertEqual(len(spec["blocks"]), 1)
+        steps = spec["blocks"][0]["steps"]
+        self.assertEqual(len(steps), 16)
+        self.assertEqual(warnings, [
+            "16 FIT step name(s) are not kept",
+            "16 FIT step note(s) are not kept",
+        ])
+
+    def test_a_warmup_step_keeps_its_power_zone(self) -> None:
+        # Garmin puts a power target on the warmup, which used to be rejected.
+        spec, _ = parse_workout_fit(self._payload())
+        first = spec["blocks"][0]["steps"][0]
+        self.assertEqual(first["kind"], "warmup")
+        self.assertEqual(first["end"], {"type": "time", "seconds": 240.0})
+        self.assertEqual(first["target"], {"type": "power_zone", "zone": 1})
+        self.assertEqual(first["secondary_target"], {"type": "cadence", "low": 85.0, "high": 90.0})
+
+    def test_a_real_file_becomes_a_garmin_workout(self) -> None:
+        spec, _ = parse_workout_fit(self._payload())
+        built = build_workout(spec)
+        steps = built["workoutSegments"][0]["workoutSteps"]
+        self.assertEqual(built["sportType"]["sportTypeKey"], "cycling")
+        self.assertEqual(len(steps), 16)
+        warmup = steps[0]
+        self.assertEqual(warmup["stepType"]["stepTypeKey"], "warmup")
+        self.assertEqual(warmup["endConditionValue"], 240.0)
+        self.assertEqual(warmup["targetType"]["workoutTargetTypeKey"], "power.zone")
+        self.assertEqual(warmup["zoneNumber"], 1)
+        self.assertEqual(warmup["secondaryTargetType"]["workoutTargetTypeKey"], "cadence")
+        self.assertEqual(warmup["secondaryTargetValueOne"], 85.0)
+        self.assertEqual(warmup["secondaryTargetValueTwo"], 90.0)
+
+    def test_every_step_is_one_garmin_step(self) -> None:
+        spec, _ = parse_workout_fit(self._payload())
+        steps = build_workout(spec)["workoutSegments"][0]["workoutSteps"]
+        orders = [step["stepOrder"] for step in steps]
+        self.assertEqual(orders, list(range(1, 17)))
+        self.assertTrue(all(step["endCondition"]["conditionTypeKey"] == "time" for step in steps))
 
 
 class WorkoutFitToGarminTest(unittest.TestCase):

@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { FIT_REASONS } from '@/lib/fit-reasons';
 
 const MAX_FILE_BYTES = 256 * 1024;
 
@@ -92,7 +93,7 @@ export function WorkoutUpload() {
       });
       const data = await response.json();
       if (!response.ok || !data.ok) {
-        setError(data.error || 'Загрузка не удалась');
+        setError(FIT_REASONS[data?.reason] || data.error || 'Загрузка не удалась');
         return;
       }
       const result = data.result || {};
@@ -111,7 +112,11 @@ export function WorkoutUpload() {
   }
 
   return (
-    <section>
+    <section className="data-tools">
+      <div>
+        <h3>Тренировка из файла FIT</h3>
+        <p className="muted">Файл проходит проверку перед отправкой в Garmin.</p>
+      </div>
       <form className="toolbar" onSubmit={send}>
         <label>
           Файл FIT
@@ -149,6 +154,12 @@ export function WorkoutUpload() {
           {sending ? 'Отправка...' : 'Загрузить FIT'}
         </button>
       </form>
+      <div>
+        <h3>Устройства Garmin</h3>
+        <p className="muted">
+          Пустой номер читает устройства и выбор по виду спорта. Номер тренировки ещё и разбирает FIT от Garmin.
+        </p>
+      </div>
       <form className="toolbar" onSubmit={probe}>
         <label>
           Номер тренировки

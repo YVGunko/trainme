@@ -252,7 +252,14 @@ def send_workout_fit(
     payload = body if isinstance(body, dict) else {}
     try:
         return import_workout_fit(payload)
-    except (WorkoutFitFileError, WorkoutSpecError, WorkoutDeviceError, WorkoutDateError) as error:
+    except WorkoutFitFileError as error:
+        # The reason travels as its own field so the browser can say what is
+        # wrong with the file instead of a single generic sentence.
+        raise HTTPException(
+            status_code=400,
+            detail={"reason": error.reason, "message": str(error)},
+        ) from error
+    except (WorkoutSpecError, WorkoutDeviceError, WorkoutDateError) as error:
         raise HTTPException(status_code=400, detail=str(error)) from error
     except WorkoutNotPushed as error:
         logger.warning(

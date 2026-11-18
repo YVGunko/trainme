@@ -20,7 +20,14 @@ export async function callRender(path, body) {
     error.status = response.status;
     try {
       const payload = await response.json();
-      if (payload && typeof payload.detail === 'string') error.detail = payload.detail;
+      const detail = payload?.detail;
+      if (typeof detail === 'string') {
+        error.detail = detail;
+      } else if (detail && typeof detail === 'object' && typeof detail.message === 'string') {
+        // A structured detail carries a reason code the caller can explain.
+        error.detail = detail.message;
+        if (typeof detail.reason === 'string') error.reason = detail.reason;
+      }
     } catch {
       // The status already describes the failure.
     }

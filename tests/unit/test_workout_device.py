@@ -248,6 +248,20 @@ class SendFitRouteTest(unittest.TestCase):
                 headers={"Authorization": "Bearer expected"},
             )
         self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json()["detail"]["reason"], "activity_file")
+
+    def test_an_unreadable_file_reports_its_own_reason(self) -> None:
+        client = TestClient(app)
+        import base64
+
+        with patch.dict(os.environ, {"SERVICE_SECRET": "expected"}, clear=True):
+            response = client.post(
+                "/workouts/fit",
+                json={"content_base64": base64.b64encode(b"junk").decode()},
+                headers={"Authorization": "Bearer expected"},
+            )
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json()["detail"]["reason"], "unreadable")
 
     def test_returns_the_import_summary(self) -> None:
         client = TestClient(app)

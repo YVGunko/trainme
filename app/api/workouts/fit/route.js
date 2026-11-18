@@ -1,5 +1,6 @@
 import { callRender } from '@/server/render';
 import { requireUser } from '@/server/session';
+import { fitReason } from '@/lib/fit-reasons';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -13,10 +14,10 @@ export async function POST(request) {
     const body = await request.json().catch(() => null);
     const content = typeof body?.content_base64 === 'string' ? body.content_base64 : '';
     if (!content) {
-      return Response.json({ ok: false, error: 'Нужен файл FIT' }, { status: 400 });
+      return Response.json({ ok: false, error: fitReason('missing'), reason: 'missing' }, { status: 400 });
     }
     if (content.length > MAX_BASE64_LENGTH) {
-      return Response.json({ ok: false, error: 'Файл больше 256 КБ' }, { status: 400 });
+      return Response.json({ ok: false, error: fitReason('too_large'), reason: 'too_large' }, { status: 400 });
     }
     const result = await callRender('/workouts/fit', body);
     return Response.json({ ok: true, result });
@@ -26,7 +27,14 @@ export async function POST(request) {
     }
     const status = error?.status || 500;
     const httpStatus = status === 400 || status === 503 ? status : status === 429 ? 429 : 502;
-    return Response.json({ ok: false, error: renderMessage(status, error?.detail) }, { status: httpStatus });
+    return Response.json(
+      {
+        ok: false,
+        error: renderMessage(status, error?.detail),
+        reason: error?.reason || null,
+      },
+      { status: httpStatus },
+    );
   }
 }
 

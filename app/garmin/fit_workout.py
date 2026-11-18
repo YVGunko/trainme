@@ -21,6 +21,7 @@ from fitdecode.profile import FIELD_TYPES
 from garminconnect import exercises
 
 _FILE_TYPE_WORKOUT = "workout"
+_FILE_TYPE_ACTIVITY = "activity"
 
 # FIT carries a base sport and a sub sport. The workout description has one
 # sport, so a running or cycling sub sport (trail, indoor, ...) maps to the
@@ -43,6 +44,9 @@ _KINDS = {
     "other": "interval",
 }
 _TIMED_KINDS = {"warmup", "cooldown", "recovery", "rest"}
+# Garmin plans put a power or heart-rate target on a warmup, recovery, or
+# cooldown step too, so a target does not mean interval.
+_TARGETABLE_KINDS = {"interval", "warmup", "recovery", "cooldown"}
 
 # A custom FIT target holds percent of the user's maximum up to this value and
 # beats per minute plus it above it. Power uses percent of threshold power up
@@ -72,7 +76,15 @@ _index_field = 254
 
 
 class WorkoutFitError(Exception):
-    """Raised when a FIT file is not a workout this app can send."""
+    """Raised when a FIT file is not a workout this app can send.
+
+    ``reason`` is a short code the web layer turns into a sentence, so the
+    caller is told what is wrong with the file instead of a generic refusal.
+    """
+
+    def __init__(self, message: str, reason: str = "not_a_workout") -> None:
+        super().__init__(message)
+        self.reason = reason
 
 
 def parse_workout_fit(payload: bytes) -> tuple[dict[str, Any], list[str]]:
@@ -94,32 +106,52 @@ def parse_workout_fit(payload: bytes) -> tuple[dict[str, Any], list[str]]:
 
 def _read(payload: bytes) -> tuple[Any, list[tuple[int, Any]]]:
     if not isinstance(payload, (bytes, bytearray)) or not payload:
-        raise WorkoutFitError("FIT file is empty")
+        raise WorkoutFitError("FIT file is empty", "empty")
     workbook: Any = None
     steps: list[tuple[int, Any]] = []
+    kind: Any = None
     try:
         with fitdecode.FitReader(io.BytesIO(bytes(payload))) as reader:
             for frame in reader:
                 if not isinstance(frame, fitdecode.FitDataMessage):
                     continue
                 if frame.name == "file_id":
-                    _check_file_type(frame)
+                    kind = _value(frame, 0)
                 elif frame.name == "workout" and workbook is None:
                     workbook = frame
                 elif frame.name == "workout_step":
                     steps.append((_step_index(len(steps), frame), frame))
     except FitError as error:
-        raise WorkoutFitError("FIT file could not be read") from error
+        raise WorkoutFitError("FIT file could not be read", "unreadable") from error
     except (OSError, ValueError) as error:
-        raise WorkoutFitError("FIT file could not be read") from error
+        raise WorkoutFitError("FIT file could not be read", "unreadable") from error
+    if kind != _FILE_TYPE_WORKOUT:
+        raise WorkoutFitError(_describe_other_file(kind), _other_reason(kind))
     if workbook is None:
-        raise WorkoutFitError("FIT file is not a workout")
+        raise WorkoutFitError("FIT file has no workout message", "no_workout_message")
     return workbook, sorted(steps, key=lambda item: item[0])
 
 
-def _check_file_type(frame: Any) -> None:
-    if _value(frame, 0) != _FILE_TYPE_WORKOUT:
-        raise WorkoutFitError("FIT file is not a workout")
+def _other_reason(kind: Any) -> str:
+    if kind is None:
+        return "unreadable"
+    if kind == _FILE_TYPE_ACTIVITY:
+        return "activity_file"
+    return "other_file"
+
+
+def _describe_other_file(kind: Any) -> str:
+    """Name what the file actually is, because the user picked it by hand."""
+    if kind == _FILE_TYPE_ACTIVITY:
+        return (
+            "FIT file is an activity, not a workout. "
+            "Garmin Connect imports activities separately and does not import workout files."
+        )
+    if isinstance(kind, str):
+        return f"FIT file type is {kind}, not a workout"
+    if kind is None:
+        return "FIT file has no file_id message"
+    return f"FIT file type id {kind} is not a workout"
 
 
 def _sport(workbook: Any) -> str:
@@ -247,7 +279,7 @@ def _targets(index: int, frame: Any, kind: str) -> tuple[dict[str, Any] | None, 
         _secondary_low_field,
         _secondary_high_field,
     )
-    if (target is not None or secondary is not None) and kind != "interval":
+    if (target is not None or secondary is not None) and kind not in _TARGETABLE_KINDS:
         raise WorkoutFitError(f"FIT step {index} is a {kind} with a target")
     if secondary is not None and target is None:
         raise WorkoutFitError(f"FIT step {index} has a secondary target without a target")

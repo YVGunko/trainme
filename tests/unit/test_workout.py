@@ -498,22 +498,37 @@ class ImportFitWorkoutTest(unittest.TestCase):
 
     def test_a_bad_file_is_rejected_before_login(self) -> None:
         with patch("app.garmin.workout._open_client") as open_client:
-            with self.assertRaises(WorkoutFitFileError):
+            with self.assertRaises(WorkoutFitFileError) as caught:
                 import_workout_fit({"content_base64": _base64(b"not a fit file")})
         open_client.assert_not_called()
+        self.assertEqual(caught.exception.reason, "unreadable")
+
+    def test_an_activity_file_says_so(self) -> None:
+        with patch("app.garmin.workout._open_client") as open_client:
+            with self.assertRaises(WorkoutFitFileError) as caught:
+                import_workout_fit({"content_base64": _base64(_activity_fit())})
+        open_client.assert_not_called()
+        self.assertEqual(caught.exception.reason, "activity_file")
 
     def test_a_file_above_the_size_limit_is_rejected(self) -> None:
         oversized = b"\x00" * (256 * 1024 + 1)
         with patch("app.garmin.workout._open_client") as open_client:
-            with self.assertRaises(WorkoutFitFileError):
+            with self.assertRaises(WorkoutFitFileError) as caught:
                 import_workout_fit({"content_base64": _base64(oversized)})
         open_client.assert_not_called()
+        self.assertEqual(caught.exception.reason, "too_large")
 
     def test_a_missing_file_is_rejected(self) -> None:
         for body in ({}, {"content_base64": ""}, {"content_base64": 5}):
             with self.subTest(body=body):
-                with self.assertRaises(WorkoutFitFileError):
+                with self.assertRaises(WorkoutFitFileError) as caught:
                     import_workout_fit(body)
+                self.assertEqual(caught.exception.reason, "missing")
+
+    def test_content_that_is_not_base64_says_so(self) -> None:
+        with self.assertRaises(WorkoutFitFileError) as caught:
+            import_workout_fit({"content_base64": "***"})
+        self.assertEqual(caught.exception.reason, "bad_base64")
 
 
 class WorkoutDateTest(unittest.TestCase):
@@ -653,6 +668,14 @@ def _definition(local: int, message: int, fields: list[tuple[int, int, int]]) ->
     for number, size, base in fields:
         payload += bytes([number, size, base])
     return bytes(payload)
+
+
+def _activity_fit() -> bytes:
+    """A FIT file whose file_id type is activity, the file the user picked by mistake."""
+    data = _definition(0, 0, [(0, 1, 0x00)]) + b"\x00" + struct.pack("<B", 4)
+    header = struct.pack("<BBHI4s", 14, 0x20, 2132, len(data), b".FIT")
+    header += struct.pack("<H", compute_crc(header))
+    return header + data + struct.pack("<H", compute_crc(data))
 
 
 def _base64(payload: bytes) -> str:

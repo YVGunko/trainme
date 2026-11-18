@@ -93,6 +93,9 @@ _SPORTS = {
 _CATALOG_SPORTS = {"strength_training", "yoga", "mobility"}
 _ENDURANCE_SPORTS = {"running", "cycling"}
 _TIMED_KINDS = {"warmup", "recovery", "cooldown", "rest"}
+# Garmin plans put a power or heart-rate target on warmup, recovery, and
+# cooldown steps too, not only on intervals.
+_TARGETABLE_TIMED_KINDS = {"warmup", "recovery", "cooldown"}
 _STEP_KEYS = {"kind", "end", "exercise", "weight_kg", "target", "secondary_target"}
 _SPEC_KEYS = {"name", "sport", "description", "duration_sec", "blocks"}
 _BLOCK_KEYS = {"repeat", "steps"}
@@ -114,7 +117,15 @@ class WorkoutSpecError(Exception):
 
 
 class WorkoutFitFileError(Exception):
-    """Raised when an uploaded FIT file cannot be read or is too large."""
+    """Raised when an uploaded FIT file cannot be read or is too large.
+
+    ``reason`` is a short code the web layer turns into a sentence, so a caller
+    learns why the file was refused instead of reading a generic message.
+    """
+
+    def __init__(self, message: str, reason: str = "not_a_workout") -> None:
+        super().__init__(message)
+        self.reason = reason
 
 
 # A workout file holds a few hundred bytes. Anything larger is not one.
@@ -302,15 +313,15 @@ def _push(
 
 def _fit_bytes(value: Any) -> bytes:
     if not isinstance(value, str) or not value:
-        raise WorkoutFitFileError("content_base64 is required")
+        raise WorkoutFitFileError("content_base64 is required", "missing")
     try:
         payload = base64.b64decode(value, validate=True)
     except (binascii.Error, ValueError) as error:
-        raise WorkoutFitFileError("content_base64 is not base64") from error
+        raise WorkoutFitFileError("content_base64 is not base64", "bad_base64") from error
     if not payload:
-        raise WorkoutFitFileError("FIT file is empty")
+        raise WorkoutFitFileError("FIT file is empty", "empty")
     if len(payload) > _MAX_FIT_BYTES:
-        raise WorkoutFitFileError("FIT file is larger than 256 KB")
+        raise WorkoutFitFileError("FIT file is larger than 256 KB", "too_large")
     return payload
 
 
@@ -318,8 +329,7 @@ def _read_fit(payload: bytes) -> tuple[dict[str, Any], list[str]]:
     try:
         return parse_workout_fit(payload)
     except WorkoutFitError as error:
-        raise WorkoutFitFileError(str(error)) from error
-
+        raise WorkoutFitFileError(str(error), error.reason) from error
 
 def _stored_import(sha256: str) -> dict[str, Any] | None:
     with connect() as connection:
@@ -447,15 +457,15 @@ def _make_step(step: Any, order: int, sport: str) -> ExecutableStep:
         raise WorkoutSpecError("Pace, power, heart rate, and cadence targets are for running and cycling")
     if secondary is not None and target is None:
         raise WorkoutSpecError("Secondary target requires a target")
-    if target is not None and kind != "interval":
-        raise WorkoutSpecError("A target belongs on an interval step")
+    if target is not None and kind not in {"interval"} | _TARGETABLE_TIMED_KINDS:
+        raise WorkoutSpecError("A target belongs on an interval, warmup, recovery, or cooldown step")
 
     if kind == "warmup":
-        built = create_warmup_step(_seconds(end), order)
+        built = _timed_step(create_warmup_step, _seconds(end), order, target, secondary)
     elif kind == "cooldown":
-        built = create_cooldown_step(_seconds(end), order)
+        built = _timed_step(create_cooldown_step, _seconds(end), order, target, secondary)
     elif kind == "recovery":
-        built = create_recovery_step(_seconds(end), order)
+        built = _timed_step(create_recovery_step, _seconds(end), order, target, secondary)
     elif kind == "rest":
         built = create_strength_rest_step(_seconds(end), order)
     elif end["type"] == "reps":
@@ -482,6 +492,23 @@ def _time_interval(seconds: float, order: int, target: Any, secondary: Any) -> E
     return create_targeted_interval_step(seconds, order, _intensity(target), _optional_intensity(secondary))
 
 
+def _timed_step(
+    create: Any,
+    seconds: float,
+    order: int,
+    target: Any,
+    secondary: Any,
+) -> ExecutableStep:
+    """Build a warmup, recovery, or cooldown step, with its target when it has one.
+
+    The library helpers only take a bare target type, so a targeted timed step
+    is built from the interval helper and then given the timed step type.
+    """
+    if target is None:
+        return create(seconds, order)
+    return _retag(_time_interval(seconds, order, target, secondary), create(seconds, order))
+
+
 def _distance_interval(meters: float, order: int, target: Any, secondary: Any) -> ExecutableStep:
     if target is None:
         return create_distance_interval_step(meters, order)
@@ -497,6 +524,14 @@ def _optional_intensity(target: Any) -> Any:
     if target is None:
         return None
     return _intensity(target)
+
+
+def _retag(source: ExecutableStep, template: ExecutableStep) -> ExecutableStep:
+    """Give a targeted step the step type of a warmup, recovery, or cooldown step."""
+    data = source.model_dump(exclude_none=True, mode="json")
+    shaped = template.model_dump(exclude_none=True, mode="json")
+    data["stepType"] = shaped["stepType"]
+    return ExecutableStep.model_validate(data)
 
 
 def _intensity(target: Any) -> Any:
