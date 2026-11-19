@@ -91,6 +91,35 @@ class RecommendRouteTest(unittest.TestCase):
         self.assertEqual(response.status_code, 502)
         self.assertEqual(response.json()["detail"]["reason"], "invalid_workout")
 
+    def test_a_read_does_not_ask_the_coach_for_a_revision(self) -> None:
+        # Opening the plan page must not cost a model call.
+        client = TestClient(app)
+        with patch.dict(os.environ, {"SERVICE_SECRET": "expected"}, clear=True):
+            with patch("app.main.recommend", return_value=_SUMMARY) as run:
+                client.post(
+                    "/recommend",
+                    json={"adjust": False},
+                    headers={"Authorization": "Bearer expected"},
+                )
+        self.assertIs(run.call_args.kwargs["adjust"], False)
+
+    def test_adjust_defaults_to_true(self) -> None:
+        client = TestClient(app)
+        with patch.dict(os.environ, {"SERVICE_SECRET": "expected"}, clear=True):
+            with patch("app.main.recommend", return_value=_SUMMARY) as run:
+                client.post("/recommend", json={}, headers={"Authorization": "Bearer expected"})
+        self.assertIs(run.call_args.kwargs["adjust"], True)
+
+    def test_a_non_boolean_adjust_is_refused(self) -> None:
+        client = TestClient(app)
+        with patch.dict(os.environ, {"SERVICE_SECRET": "expected"}, clear=True):
+            response = client.post(
+                "/recommend",
+                json={"adjust": "no"},
+                headers={"Authorization": "Bearer expected"},
+            )
+        self.assertEqual(response.status_code, 400)
+
     def test_the_key_never_appears_in_the_response(self) -> None:
         client = TestClient(app)
         env = {"SERVICE_SECRET": "expected", "LLM_API_KEY": "sk-secret-value"}

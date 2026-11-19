@@ -1,6 +1,7 @@
 import { cookies } from 'next/headers';
 import { ActivityScreen } from '@/components/activity-screen';
 import { AppHeader } from '@/components/app-header';
+import { CoachPlan } from '@/components/coach-plan';
 import { LoginForm } from '@/components/login-form';
 import { userFromToken } from '@/server/session';
 import { listActivities } from '@/server/activities';
@@ -42,6 +43,7 @@ export default async function HomePage() {
     <main>
       <AppHeader username={user.username} />
       {listError ? <p className="error">{listError}</p> : null}
+      <CoachPlan />
       <ActivityScreen activities={activities} />
     </main>
   );

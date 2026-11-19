@@ -433,11 +433,10 @@ def make_recommendation(
     body: dict | None = Body(default=None),
     authorization: str | None = Header(default=None),
 ) -> dict:
-    """Ask the coach for today's session. Nothing is uploaded.
+    """Ask the coach for the plan in force, revising it unless told not to.
 
-    One recommendation is kept per day. ``regenerate: true`` asks for a new one
-    and replaces the stored copy, which is what the athlete uses after the day
-    changes under them.
+    ``adjust: false`` returns the stored plan untouched, which is what a read
+    does. ``regenerate: true`` builds a new week and replaces the stored one.
     """
     _require_service_secret(authorization)
     payload = body if isinstance(body, dict) else {}
@@ -447,12 +446,15 @@ def make_recommendation(
     regenerate = payload.get("regenerate", False)
     if not isinstance(regenerate, bool):
         raise HTTPException(status_code=400, detail="regenerate must be true or false")
+    adjust = payload.get("adjust", True)
+    if not isinstance(adjust, bool):
+        raise HTTPException(status_code=400, detail="adjust must be true or false")
     try:
         today = None if day is None else date.fromisoformat(day)
     except ValueError as error:
         raise HTTPException(status_code=400, detail="Date must be YYYY-MM-DD") from error
     try:
-        return recommend(today, regenerate=regenerate)
+        return recommend(today, regenerate=regenerate, adjust=adjust)
     except RecommendationError as error:
         if error.reason == "not_configured":
             raise HTTPException(status_code=503, detail="The coach has no API key") from error

@@ -538,6 +538,53 @@ tr.is-selected td {
   overflow-wrap: anywhere;
 }
 
+/* The week the coach proposed. One card per day, with its sessions inside. */
+.plan-days {
+  display: grid;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.plan-day {
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--card);
+}
+
+.plan-day.is-rest {
+  background: transparent;
+  border-style: dashed;
+}
+
+.plan-day-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: baseline;
+  margin-bottom: 6px;
+}
+
+.plan-workout {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+}
+
+.plan-workout:first-of-type {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: 0;
+}
+
+.plan-workout .sets {
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
 .activity-cards {
   list-style: none;
   margin: 0;
