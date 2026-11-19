@@ -21,7 +21,7 @@ SPORTS = ("running", "cycling", "strength_training", "yoga", "mobility")
 ANSWER_SCHEMA: dict[str, Any] = {
     "type": "object",
     "additionalProperties": False,
-    "required": ["recommendation", "workout"],
+    "required": ["recommendation", "days"],
     "properties": {
         "recommendation": {
             "type": "object",
@@ -30,7 +30,7 @@ ANSWER_SCHEMA: dict[str, Any] = {
             "properties": {
                 "summary": {
                     "type": "string",
-                    "description": "One sentence: what to do today.",
+                    "description": "One sentence: the shape of the week ahead.",
                 },
                 "reason": {
                     "type": "string",
@@ -42,65 +42,95 @@ ANSWER_SCHEMA: dict[str, Any] = {
                 },
             },
         },
-        "workout": {
-            "type": "object",
-            "additionalProperties": False,
-            "required": ["name", "sport", "blocks"],
-            "properties": {
-                "name": {"type": "string"},
-                "sport": {"type": "string", "enum": list(SPORTS)},
-                "description": {"type": "string"},
-                "blocks": {
-                    "type": "array",
-                    "minItems": 1,
-                    "items": {
+        "days": {
+            "type": "array",
+            "description": "One entry per day of the plan, oldest first.",
+            "minItems": 1,
+            "items": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": ["date", "kind"],
+                "properties": {
+                    "date": {"type": "string", "description": "YYYY-MM-DD."},
+                    "kind": {
+                        "type": "string",
+                        "enum": ["workout", "rest"],
+                        "description": "rest means no session that day.",
+                    },
+                    "reason": {
+                        "type": "string",
+                        "description": "Optional: why this day is shaped this way.",
+                    },
+                    "workouts": {
+                        "type": "array",
+                        "description": (
+                            "Sessions for that day. A day can hold more than one, "
+                            "such as a strength session and a ride. Empty on a rest day."
+                        ),
+                        "minItems": 1,
+                        "items": {
                         "type": "object",
                         "additionalProperties": False,
-                        "required": ["steps"],
+                        "required": ["name", "sport", "blocks"],
                         "properties": {
-                            "repeat": {"type": "integer", "minimum": 1},
-                            "steps": {
+                            "name": {"type": "string"},
+                            "sport": {"type": "string", "enum": list(SPORTS)},
+                            "description": {"type": "string"},
+                            "blocks": {
                                 "type": "array",
                                 "minItems": 1,
                                 "items": {
                                     "type": "object",
                                     "additionalProperties": False,
-                                    "required": ["kind", "end"],
+                                    "required": ["steps"],
                                     "properties": {
-                                        "kind": {
-                                            "type": "string",
-                                            "enum": [
-                                                "warmup",
-                                                "interval",
-                                                "recovery",
-                                                "cooldown",
-                                                "rest",
-                                            ],
-                                        },
-                                        "end": {
-                                            "type": "object",
-                                            "additionalProperties": False,
-                                            "required": ["type"],
-                                            "properties": {
-                                                "type": {
-                                                    "type": "string",
-                                                    "enum": ["time", "distance", "reps"],
+                                        "repeat": {"type": "integer", "minimum": 1},
+                                        "steps": {
+                                            "type": "array",
+                                            "minItems": 1,
+                                            "items": {
+                                                "type": "object",
+                                                "additionalProperties": False,
+                                                "required": ["kind", "end"],
+                                                "properties": {
+                                                    "kind": {
+                                                        "type": "string",
+                                                        "enum": [
+                                                            "warmup",
+                                                            "interval",
+                                                            "recovery",
+                                                            "cooldown",
+                                                            "rest",
+                                                        ],
+                                                    },
+                                                    "end": {
+                                                        "type": "object",
+                                                        "additionalProperties": False,
+                                                        "required": ["type"],
+                                                        "properties": {
+                                                            "type": {
+                                                                "type": "string",
+                                                                "enum": ["time", "distance", "reps"],
+                                                            },
+                                                            "seconds": {"type": "number"},
+                                                            "meters": {"type": "number"},
+                                                            "count": {"type": "integer"},
+                                                        },
+                                                    },
+                                                    "exercise": {
+                                                        "type": "string",
+                                                        "description": "Catalog name, strength, yoga, and mobility only.",
+                                                    },
+                                                    "weight_kg": {"type": "number"},
+                                                    "target": {"type": "object"},
+                                                    "secondary_target": {"type": "object"},
                                                 },
-                                                "seconds": {"type": "number"},
-                                                "meters": {"type": "number"},
-                                                "count": {"type": "integer"},
                                             },
                                         },
-                                        "exercise": {
-                                            "type": "string",
-                                            "description": "Catalog name, strength, yoga, and mobility only.",
-                                        },
-                                        "weight_kg": {"type": "number"},
-                                        "target": {"type": "object"},
-                                        "secondary_target": {"type": "object"},
                                     },
                                 },
                             },
+                        },
                         },
                     },
                 },
@@ -115,10 +145,10 @@ class AnswerShapeError(Exception):
 
 
 def read_answer(payload: Any) -> dict[str, Any]:
-    """Return the recommendation and workout, or refuse with the field at fault."""
+    """Return the recommendation and the planned days, or refuse with the field at fault."""
     if not isinstance(payload, dict):
         raise AnswerShapeError("Answer is not an object")
-    unknown = sorted(set(payload) - {"recommendation", "workout"})
+    unknown = sorted(set(payload) - {"recommendation", "days"})
     if unknown:
         raise AnswerShapeError(f"Answer has an unknown field: {unknown[0]}")
 
@@ -138,20 +168,53 @@ def read_answer(payload: Any) -> dict[str, Any]:
     if not 0 <= float(confidence) <= 1:
         raise AnswerShapeError("recommendation.confidence must be between 0 and 1")
 
-    workout = payload.get("workout")
-    if not isinstance(workout, dict):
-        raise AnswerShapeError("Answer has no workout")
+    days = payload.get("days")
+    if not isinstance(days, list) or not days:
+        raise AnswerShapeError("Answer has no days")
     return {
         "recommendation": {
             "summary": summary,
             "reason": reason,
             "confidence": float(confidence),
         },
-        # The workout goes to the existing validator untouched: this layer only
-        # checks that the object is present and shaped, not that a step makes
-        # sense for the sport.
-        "workout": workout,
+        # Each workout goes to the existing validator untouched: this layer only
+        # checks the object is present and shaped, not that a step makes sense
+        # for the sport.
+        "days": [_day(index, entry) for index, entry in enumerate(days)],
     }
+
+
+def _day(index: int, entry: Any) -> dict[str, Any]:
+    if not isinstance(entry, dict):
+        raise AnswerShapeError(f"days[{index}] is not an object")
+    extra = sorted(set(entry) - {"date", "kind", "reason", "workouts"})
+    if extra:
+        raise AnswerShapeError(f"days[{index}] has an unknown field: {extra[0]}")
+    day = entry.get("date")
+    if not isinstance(day, str) or len(day) != 10:
+        raise AnswerShapeError(f"days[{index}].date must be YYYY-MM-DD")
+    kind = entry.get("kind")
+    if kind not in {"workout", "rest"}:
+        raise AnswerShapeError(f"days[{index}].kind must be workout or rest")
+
+    workouts = entry.get("workouts")
+    if kind == "rest":
+        if workouts:
+            raise AnswerShapeError(f"days[{index}] is a rest day and cannot carry a workout")
+        result: dict[str, Any] = {"date": day, "kind": "rest"}
+    else:
+        # A day may hold more than one session, such as a lift and a ride.
+        if not isinstance(workouts, list) or not workouts:
+            raise AnswerShapeError(f"days[{index}] is a workout day with no workouts")
+        for position, workout in enumerate(workouts):
+            if not isinstance(workout, dict):
+                raise AnswerShapeError(f"days[{index}].workouts[{position}] is not an object")
+        result = {"date": day, "kind": "workout", "workouts": workouts}
+
+    reason = entry.get("reason")
+    if isinstance(reason, str) and reason.strip():
+        result["reason"] = reason.strip()
+    return result
 
 
 def _text(value: dict[str, Any], key: str) -> str:

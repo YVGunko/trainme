@@ -21,8 +21,7 @@ from typing import Any
 
 from app.history_summary import RAW_DAYS, split_history, weekly_summary
 from app.sports import to_sport
-from app.storage.db import (
-    connect,
+from app.storage.db import (    connect,
     ensure_schema,
     load_activity_history,
     load_athlete_profile,
@@ -40,6 +39,15 @@ HISTORY_DAYS = 365
 # A cap so a long history cannot make the request unbounded. 400 rows is more
 # than a year of daily training for one person.
 HISTORY_LIMIT = 400
+
+# The athlete's calendar offset, east of UTC. The same number lives in
+# src/lib/training-day.js for the cron; the two must agree, and only the cron
+# needs the full precision, so this one is hours.
+TRAINING_UTC_OFFSET_MINUTES = 3 * 60
+
+WEEKDAYS = (
+    "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday",
+)
 
 
 def build_context(today: date | None = None) -> dict[str, Any]:
@@ -63,11 +71,19 @@ def build_context(today: date | None = None) -> dict[str, Any]:
     return {
         "profile": profile or {"notes": None, "avoided_sports": []},
         "today": end.isoformat(),
+        "today_weekday": WEEKDAYS[end.weekday()],
+        "timezone": f"UTC+{_offset_hours()}",
         "recent_days": [_day(row) for row in days],
         "wellness": wellness,
         "recent_activities": [_slim(row) for row in recent],
         "weekly_totals": weekly_summary(older),
     }
+
+
+def _offset_hours() -> int:
+    # The athlete's calendar, in hours east of UTC. Garmin timestamps arrive
+    # already converted, so this only tells the model how to read a clock time.
+    return TRAINING_UTC_OFFSET_MINUTES // 60
 
 
 def coverage(context: dict[str, Any]) -> dict[str, Any]:
@@ -115,9 +131,12 @@ def _slim(row: dict[str, Any]) -> dict[str, Any]:
     The sport is folded to the five names a workout can be built for. Garmin's
     own name travels as ``garmin_sport`` so nothing is lost, and ``sport`` is
     always one of the five or "other".
+
+    The athlete's own rating and comment travel with the session: a session that
+    felt hard at low power says something the numbers alone do not.
     """
     garmin_sport = row.get("sport")
-    return {
+    slim = {
         "day": row.get("day"),
         "sport": to_sport(garmin_sport),
         "garmin_sport": garmin_sport,
@@ -126,6 +145,16 @@ def _slim(row: dict[str, Any]) -> dict[str, Any]:
         "avg_hr": _round(row.get("avg_hr"), 1),
         "activity_load": _round(row.get("training_load"), 1),
     }
+    effort = row.get("perceived_effort")
+    if effort is not None:
+        slim["perceived_effort"] = effort
+    feel = row.get("feel")
+    if feel is not None:
+        slim["feel"] = feel
+    note = row.get("activity_note")
+    if isinstance(note, str) and note.strip():
+        slim["note"] = note.strip()
+    return slim
 
 
 def _round(value: Any, divisor: float) -> float | None:

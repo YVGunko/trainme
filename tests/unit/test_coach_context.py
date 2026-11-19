@@ -210,10 +210,10 @@ class ContextRouteTest(unittest.TestCase):
         self.assertEqual(response.status_code, 503)
 
 
-class NoteNeverLeavesTest(unittest.TestCase):
-    """The wellness note is written for the athlete, so it must not be queried."""
+class NoteTravelsToTheCoachTest(unittest.TestCase):
+    """The athlete asked for their own notes to reach the coach."""
 
-    def test_load_subjective_days_does_not_select_the_note(self) -> None:
+    def test_the_wellness_note_is_selected(self) -> None:
         from app.storage.db import load_subjective_days
 
         connection = MagicMock()
@@ -221,19 +221,40 @@ class NoteNeverLeavesTest(unittest.TestCase):
         load_subjective_days(connection, "2026-01-01", "2026-11-18")
         sql = " ".join(connection.execute.call_args.args[0].split()).lower()
         select_part = sql.split("from subjective_log")[0]
-        self.assertNotIn("note", select_part)
-        for field in ("fatigue", "soreness", "injury", "illness"):
-            self.assertIn(field, select_part)
+        self.assertIn("note", select_part)
 
-    def test_a_stored_note_cannot_reach_the_context(self) -> None:
-        # Even if a row carried a note, the reader asks for named columns only,
-        # so the value can never appear in the payload.
+    def test_a_stored_note_arrives_with_its_day(self) -> None:
         from app.storage.db import load_subjective_days
 
         connection = MagicMock()
         connection.execute.return_value.fetchall.return_value = [
-            ("2026-11-18", 1, 2, 3, 4, 1, 2, 3, 4),
+            ("2026-11-18", 1, 2, 3, 4, 1, 2, 3, 4, "колено ноет после бега"),
         ]
         rows = load_subjective_days(connection, "2026-11-18", "2026-11-18")
-        self.assertNotIn("note", rows[0])
+        self.assertEqual(rows[0]["note"], "колено ноет после бега")
         self.assertEqual(rows[0]["injury"], 3)
+
+    def test_a_session_note_and_rating_travel_with_the_session(self) -> None:
+        from app.coach_context import _slim
+
+        slim = _slim(
+            {
+                "day": "2026-11-17",
+                "sport": "indoor_cycling",
+                "duration_sec": 3600.0,
+                "perceived_effort": 7,
+                "feel": 50,
+                "activity_note": "тяжело шло",
+            }
+        )
+        self.assertEqual(slim["perceived_effort"], 7)
+        self.assertEqual(slim["feel"], 50)
+        self.assertEqual(slim["note"], "тяжело шло")
+
+    def test_an_unrated_session_gains_no_empty_fields(self) -> None:
+        from app.coach_context import _slim
+
+        slim = _slim({"day": "2026-11-17", "sport": "running", "duration_sec": 1800.0})
+        self.assertNotIn("perceived_effort", slim)
+        self.assertNotIn("feel", slim)
+        self.assertNotIn("note", slim)

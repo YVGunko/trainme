@@ -435,21 +435,24 @@ def make_recommendation(
 ) -> dict:
     """Ask the coach for today's session. Nothing is uploaded.
 
-    The answer still has to pass the workout validator, which recommend() does
-    before returning, so the caller receives a payload that would be accepted by
-    Garmin or an error explaining why not.
+    One recommendation is kept per day. ``regenerate: true`` asks for a new one
+    and replaces the stored copy, which is what the athlete uses after the day
+    changes under them.
     """
     _require_service_secret(authorization)
     payload = body if isinstance(body, dict) else {}
     day = payload.get("date")
     if day is not None and not isinstance(day, str):
         raise HTTPException(status_code=400, detail="Date must be YYYY-MM-DD")
+    regenerate = payload.get("regenerate", False)
+    if not isinstance(regenerate, bool):
+        raise HTTPException(status_code=400, detail="regenerate must be true or false")
     try:
         today = None if day is None else date.fromisoformat(day)
     except ValueError as error:
         raise HTTPException(status_code=400, detail="Date must be YYYY-MM-DD") from error
     try:
-        return recommend(today)
+        return recommend(today, regenerate=regenerate)
     except RecommendationError as error:
         if error.reason == "not_configured":
             raise HTTPException(status_code=503, detail="The coach has no API key") from error

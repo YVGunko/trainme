@@ -1,3 +1,4 @@
+import json
 import os
 from pathlib import Path
 from typing import Any
@@ -479,7 +480,12 @@ def upsert_activity_history(
     connection: psycopg.Connection,
     rows: list[dict[str, Any]],
 ) -> int:
-    """Store activity summaries, replacing a previous row for the same activity."""
+    """Store activity summaries, replacing a previous row for the same activity.
+
+    Keyed on the Garmin activity id, so importing the same days twice updates the
+    rows instead of duplicating them. That is what lets the cron re-read a
+    rolling window every day.
+    """
     if not rows:
         return 0
     with connection.cursor() as cursor:
@@ -487,9 +493,10 @@ def upsert_activity_history(
             """
             INSERT INTO activity_history (
                 garmin_activity_id, start_local, day, sport, duration_sec,
-                distance_m, avg_hr, max_hr, calories, training_load, updated_at
+                distance_m, avg_hr, max_hr, calories, training_load,
+                perceived_effort, feel, activity_note, updated_at
             )
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, now())
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, now())
             ON CONFLICT (garmin_activity_id) DO UPDATE
             SET start_local = EXCLUDED.start_local,
                 day = EXCLUDED.day,
@@ -500,6 +507,9 @@ def upsert_activity_history(
                 max_hr = COALESCE(EXCLUDED.max_hr, activity_history.max_hr),
                 calories = COALESCE(EXCLUDED.calories, activity_history.calories),
                 training_load = COALESCE(EXCLUDED.training_load, activity_history.training_load),
+                perceived_effort = COALESCE(EXCLUDED.perceived_effort, activity_history.perceived_effort),
+                feel = COALESCE(EXCLUDED.feel, activity_history.feel),
+                activity_note = COALESCE(EXCLUDED.activity_note, activity_history.activity_note),
                 updated_at = now()
             """,
             [
@@ -514,12 +524,32 @@ def upsert_activity_history(
                     row["max_hr"],
                     row["calories"],
                     row["training_load"],
+                    row.get("perceived_effort"),
+                    row.get("feel"),
+                    row.get("activity_note"),
                 )
                 for row in rows
             ],
         )
     connection.commit()
     return len(rows)
+
+
+def stored_history_ids(
+    connection: psycopg.Connection, ids: list[int]
+) -> set[int]:
+    """Return which of these activity ids already have a row.
+
+    Used to skip the extra evaluation request for activities that are already
+    stored with their rating, so a rolling window does not re-read them daily.
+    """
+    if not ids:
+        return set()
+    rows = connection.execute(
+        "SELECT garmin_activity_id FROM activity_history WHERE garmin_activity_id = ANY(%s)",
+        (ids,),
+    ).fetchall()
+    return {int(row[0]) for row in rows}
 
 
 def load_activity_history(
@@ -536,7 +566,8 @@ def load_activity_history(
     rows = connection.execute(
         """
         SELECT to_char(start_local, 'YYYY-MM-DD HH24:MI:SS'), day::text, sport,
-               duration_sec, distance_m, avg_hr, max_hr, calories, training_load
+               duration_sec, distance_m, avg_hr, max_hr, calories, training_load,
+               perceived_effort, feel, activity_note
         FROM activity_history
         WHERE day >= %s::date AND day <= %s::date
         ORDER BY start_local ASC
@@ -555,6 +586,9 @@ def load_activity_history(
             "max_hr": row[6],
             "calories": row[7],
             "training_load": row[8],
+            "perceived_effort": row[9],
+            "feel": row[10],
+            "activity_note": row[11],
         }
         for row in rows
     ]
@@ -563,6 +597,50 @@ def load_activity_history(
 def activity_history_count(connection: psycopg.Connection) -> int:
     row = connection.execute("SELECT count(*) FROM activity_history").fetchone()
     return int(row[0])
+
+
+def load_recommendation(
+    connection: psycopg.Connection, day: str
+) -> dict[str, Any] | None:
+    row = connection.execute(
+        "SELECT payload FROM daily_recommendation WHERE day = %s::date", (day,)
+    ).fetchone()
+    if row is None:
+        return None
+    payload = row[0]
+    return payload if isinstance(payload, dict) else None
+
+
+def save_recommendation(
+    connection: psycopg.Connection, day: str, payload: dict[str, Any]
+) -> None:
+    """Store the day's recommendation, keeping the first one written."""
+    connection.execute(
+        """
+        INSERT INTO daily_recommendation (day, payload)
+        VALUES (%s::date, %s::jsonb)
+        ON CONFLICT (day) DO NOTHING
+        """,
+        (day, json.dumps(payload, ensure_ascii=False)),
+    )
+    connection.commit()
+
+
+def replace_recommendation(
+    connection: psycopg.Connection, day: str, payload: dict[str, Any]
+) -> None:
+    """Overwrite the day's recommendation, for an explicit regeneration."""
+    connection.execute(
+        """
+        INSERT INTO daily_recommendation (day, payload)
+        VALUES (%s::date, %s::jsonb)
+        ON CONFLICT (day) DO UPDATE
+        SET payload = EXCLUDED.payload,
+            created_at = now()
+        """,
+        (day, json.dumps(payload, ensure_ascii=False)),
+    )
+    connection.commit()
 
 
 _DAY_COLUMNS = (
@@ -648,15 +726,17 @@ def load_subjective_days(
     start: str,
     end: str,
 ) -> list[dict[str, Any]]:
-    """Return the scored wellness row per day. The free-text note is not read.
+    """Return the wellness row per day, including the athlete's own note.
 
-    The note is what the athlete writes for themselves; it is deliberately left
-    in the table so it cannot reach a model by accident.
+    The note is included because the athlete asked for it to reach the coach: it
+    is where a flare-up gets described in words, and the scored 1-4 fields alone
+    cannot say which body part hurt.
     """
     rows = connection.execute(
         """
         SELECT to_char(date, 'YYYY-MM-DD'),
-               fatigue, soreness, mood, motivation, stress, sleep_quality, injury, illness
+               fatigue, soreness, mood, motivation, stress, sleep_quality, injury, illness,
+               note
         FROM subjective_log
         WHERE date >= %s::date AND date <= %s::date
         ORDER BY date ASC
@@ -664,7 +744,7 @@ def load_subjective_days(
         (start, end),
     ).fetchall()
     keys = ("fatigue", "soreness", "mood", "motivation", "stress", "sleep_quality", "injury", "illness")
-    return [{"date": row[0], **dict(zip(keys, row[1:]))} for row in rows]
+    return [{"date": row[0], **dict(zip(keys, row[1:9])), "note": row[9]} for row in rows]
 
 
 def _raw_row(row: tuple) -> dict[str, Any]:

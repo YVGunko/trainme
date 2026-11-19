@@ -20,7 +20,10 @@ _WORKOUT = {
 
 _ANSWER = {
     "recommendation": {"summary": "Easy spin", "reason": "Load is high", "confidence": 0.7},
-    "workout": _WORKOUT,
+    "days": [
+        {"date": "2026-11-19", "kind": "workout", "workouts": [_WORKOUT]},
+        {"date": "2026-11-20", "kind": "rest", "reason": "Soreness"},
+    ],
 }
 
 
@@ -181,7 +184,9 @@ class ReadAnswerTest(unittest.TestCase):
     def test_reads_a_well_formed_answer(self) -> None:
         answer = read_answer(_ANSWER)
         self.assertEqual(answer["recommendation"]["confidence"], 0.7)
-        self.assertEqual(answer["workout"], _WORKOUT)
+        self.assertEqual(answer["days"][0]["workouts"], [_WORKOUT])
+        self.assertEqual(answer["days"][1]["kind"], "rest")
+        self.assertNotIn("workouts", answer["days"][1])
 
     def test_an_unknown_top_level_field_is_refused(self) -> None:
         with self.assertRaises(AnswerShapeError):
@@ -201,16 +206,39 @@ class ReadAnswerTest(unittest.TestCase):
                 with self.assertRaises(AnswerShapeError):
                     read_answer(bad)
 
-    def test_a_missing_workout_is_refused(self) -> None:
+    def test_a_missing_days_list_is_refused(self) -> None:
         with self.assertRaises(AnswerShapeError):
             read_answer({"recommendation": _ANSWER["recommendation"]})
+
+    def test_a_rest_day_carrying_a_workout_is_refused(self) -> None:
+        bad = {**_ANSWER, "days": [{"date": "2026-11-19", "kind": "rest", "workouts": [_WORKOUT]}]}
+        with self.assertRaises(AnswerShapeError):
+            read_answer(bad)
+
+    def test_a_workout_day_without_a_workout_is_refused(self) -> None:
+        bad = {**_ANSWER, "days": [{"date": "2026-11-19", "kind": "workout"}]}
+        with self.assertRaises(AnswerShapeError):
+            read_answer(bad)
+
+    def test_a_day_may_hold_several_sessions(self) -> None:
+        # A strength session and a ride on the same day is normal.
+        two = {**_ANSWER, "days": [{"date": "2026-11-19", "kind": "workout",
+                                    "workouts": [_WORKOUT, {**_WORKOUT, "sport": "strength_training"}]}]}
+        answer = read_answer(two)
+        self.assertEqual(len(answer["days"][0]["workouts"]), 2)
+
+    def test_a_misspelled_day_field_is_refused(self) -> None:
+        bad = {**_ANSWER, "days": [{"date": "2026-11-19", "kind": "rest", "day": "x"}]}
+        with self.assertRaises(AnswerShapeError):
+            read_answer(bad)
 
 
 class SchemaTest(unittest.TestCase):
     def test_the_schema_covers_the_fields_the_validator_reads(self) -> None:
         from app.garmin.workout import _SPEC_KEYS
 
-        properties = set(ANSWER_SCHEMA["properties"]["workout"]["properties"])
+        workout_schema = ANSWER_SCHEMA["properties"]["days"]["items"]["properties"]["workouts"]["items"]
+        properties = set(workout_schema["properties"])
         # Every field the validator reads must be describable by the model, or
         # its answer would silently lose it.
         self.assertTrue(_SPEC_KEYS - {"duration_sec"} <= properties)
@@ -218,7 +246,8 @@ class SchemaTest(unittest.TestCase):
     def test_every_sport_the_builder_accepts_is_offered(self) -> None:
         from app.garmin.workout import _SPORTS
 
-        self.assertEqual(set(ANSWER_SCHEMA["properties"]["workout"]["properties"]["sport"]["enum"]), set(_SPORTS))
+        workout_schema = ANSWER_SCHEMA["properties"]["days"]["items"]["properties"]["workouts"]["items"]
+        self.assertEqual(set(workout_schema["properties"]["sport"]["enum"]), set(_SPORTS))
 
 
 class PromptTest(unittest.TestCase):
@@ -227,7 +256,8 @@ class PromptTest(unittest.TestCase):
         # to be in the prompt or the model invents its own field names.
         for key in ANSWER_SCHEMA["required"]:
             self.assertIn(f'"{key}"', SYSTEM_PROMPT, f"{key} missing from the prompt")
-        for key in ANSWER_SCHEMA["properties"]["workout"]["required"]:
+        workout_schema = ANSWER_SCHEMA["properties"]["days"]["items"]["properties"]["workouts"]["items"]
+        for key in workout_schema["required"]:
             self.assertIn(f'"{key}"', SYSTEM_PROMPT, f"workout.{key} missing from the prompt")
 
     def test_the_prompt_mentions_json_for_json_object_mode(self) -> None:
@@ -320,31 +350,37 @@ class RecommendTest(unittest.TestCase):
     def test_a_good_answer_passes_the_existing_validator(self) -> None:
         with patch("app.ai.recommend.build_context", return_value={"today": "2026-11-18"}):
             with patch("app.ai.recommend.client.chat", return_value=_ANSWER):
-                result = recommend()
+                with _no_store():
+                    result = recommend()
         self.assertEqual(result["recommendation"]["summary"], "Easy spin")
-        self.assertEqual(result["garmin_payload"]["sportType"]["sportTypeKey"], "cycling")
-        self.assertEqual(len(result["garmin_payload"]["workoutSegments"][0]["workoutSteps"]), 1)
+        payloads = result["garmin_payloads"]
+        self.assertEqual(len(payloads), 1)
+        self.assertEqual(payloads[0]["date"], "2026-11-19")
+        self.assertEqual(payloads[0]["garmin_payload"]["sportType"]["sportTypeKey"], "cycling")
 
     def test_a_workout_the_validator_rejects_never_reaches_garmin(self) -> None:
-        bad = {**_ANSWER, "workout": {**_WORKOUT, "sport": "swimming"}}
+        bad = {**_ANSWER, "days": [{"date": "2026-11-19", "kind": "workout", "workouts": [{**_WORKOUT, "sport": "swimming"}]}]}
         with patch("app.ai.recommend.build_context", return_value={}):
             with patch("app.ai.recommend.client.chat", return_value=bad):
-                with self.assertRaises(RecommendationError) as caught:
-                    recommend()
+                with _no_store():
+                    with self.assertRaises(RecommendationError) as caught:
+                        recommend()
         self.assertEqual(caught.exception.reason, "invalid_workout")
 
     def test_a_misspelled_field_is_a_shape_error(self) -> None:
         bad = {**_ANSWER, "recommendation": _ANSWER["recommendation"] | {"confidance": 0.5}}
         with patch("app.ai.recommend.build_context", return_value={}):
             with patch("app.ai.recommend.client.chat", return_value=bad):
-                with self.assertRaises(RecommendationError):
-                    recommend()
+                with _no_store():
+                    with self.assertRaises(RecommendationError):
+                        recommend()
 
     def test_a_missing_key_says_so(self) -> None:
         with patch("app.ai.recommend.build_context", return_value={}):
             with patch("app.ai.recommend.client.chat", side_effect=client.LlmNotConfigured):
-                with self.assertRaises(RecommendationError) as caught:
-                    recommend()
+                with _no_store():
+                    with self.assertRaises(RecommendationError) as caught:
+                        recommend()
         self.assertEqual(caught.exception.reason, "not_configured")
 
     def test_an_invented_exercise_leaves_the_step_out_and_is_reported(self) -> None:
@@ -368,23 +404,21 @@ class RecommendTest(unittest.TestCase):
                 }
             ],
         }
-        bad = {**_ANSWER, "workout": bad_workout}
+        bad = {**_ANSWER, "days": [{"date": "2026-11-19", "kind": "workout", "workouts": [bad_workout]}]}
         with patch("app.ai.recommend.build_context", return_value={}):
             with patch("app.ai.recommend.client.chat", return_value=bad):
                 with patch(
                     "app.ai.recommend.exercise_resolve.resolve",
                     return_value={"Definitely Not An Exercise": None},
-                ):
+                ), _no_store():
                     result = recommend()
         self.assertEqual(result["unmatched_exercises"], ["Definitely Not An Exercise"])
-        kinds = [
-            step["kind"]
-            for block in result["workout"]["blocks"]
-            for step in block["steps"]
-        ]
+        day = result["days"][0]
+        kinds = [step["kind"] for block in day["workouts"][0]["blocks"] for step in block["steps"]]
         self.assertEqual(kinds, ["warmup", "cooldown"])
         # What is sent is valid, so the athlete still gets a workout.
-        self.assertEqual(result["garmin_payload"]["sportType"]["sportTypeKey"], "strength_training")
+        payload = result["garmin_payloads"][0]["garmin_payload"]
+        self.assertEqual(payload["sportType"]["sportTypeKey"], "strength_training")
 
     def test_a_failed_follow_up_does_not_lose_the_plan(self) -> None:
         # The first answer is already usable. A narrow second question failing
@@ -406,18 +440,18 @@ class RecommendTest(unittest.TestCase):
                 }
             ],
         }
-        answer = {**_ANSWER, "workout": workout}
+        answer = {**_ANSWER, "days": [{"date": "2026-11-19", "kind": "workout", "workouts": [workout]}]}
         with patch("app.ai.recommend.build_context", return_value={}):
             with patch("app.ai.recommend.client.chat", return_value=answer):
                 with patch(
                     "app.ai.recommend.exercise_resolve.resolve",
                     side_effect=exercise_resolve.ResolutionError("down"),
-                ):
+                ), _no_store():
                     result = recommend()
         self.assertEqual(result["unmatched_exercises"], ["Glute Bridge"])
         kinds = [
             step["kind"]
-            for block in result["workout"]["blocks"]
+            for block in result["days"][0]["workouts"][0]["blocks"]
             for step in block["steps"]
         ]
         self.assertEqual(kinds, ["warmup", "cooldown"])
@@ -440,11 +474,12 @@ class RecommendTest(unittest.TestCase):
                 }
             ],
         }
-        answer = {**_ANSWER, "workout": workout}
+        answer = {**_ANSWER, "days": [{"date": "2026-11-19", "kind": "workout", "workouts": [workout]}]}
         with patch("app.ai.recommend.build_context", return_value={}):
             with patch("app.ai.recommend.client.chat", return_value=answer):
-                result = recommend()
-        steps = result["workout"]["blocks"][0]["steps"]
+                with _no_store():
+                    result = recommend()
+        steps = result["days"][0]["workouts"][0]["blocks"][0]["steps"]
         self.assertEqual(steps[1]["exercise"], "Step-up")
         self.assertNotIn("unmatched_exercises", result)
 
@@ -454,5 +489,65 @@ class RecommendTest(unittest.TestCase):
             return_value={"today": "2026-11-18", "recent_activities": [], "weekly_totals": []},
         ):
             with patch("app.ai.recommend.client.chat", return_value=_ANSWER):
-                result = recommend()
+                with _no_store():
+                    result = recommend()
         self.assertEqual(result["coverage"]["raw_activity_count"], 0)
+
+
+class _StoreStub:
+    """Stand-in for the day store, so no test touches a database."""
+
+    def __init__(self) -> None:
+        self.saved: list[tuple[str, dict]] = []
+
+    def __enter__(self) -> "_StoreStub":
+        self._patchers = [
+            patch("app.ai.recommend.load_recommendation", side_effect=self._load),
+            patch("app.ai.recommend.save_recommendation", side_effect=self._save),
+            patch("app.ai.recommend.connect"),
+            patch("app.ai.recommend.ensure_schema"),
+        ]
+        for patcher in self._patchers:
+            patcher.start()
+        return self
+
+    def _load(self, connection, day):
+        for stored_day, payload in self.saved:
+            if stored_day == day:
+                return payload
+        return None
+
+    def _save(self, connection, day, payload):
+        self.saved.append((day, payload))
+
+    def __exit__(self, *args) -> bool:
+        for patcher in reversed(self._patchers):
+            patcher.stop()
+        return False
+
+
+def _no_store() -> _StoreStub:
+    return _StoreStub()
+
+
+class StoredRecommendationTest(unittest.TestCase):
+    def test_a_second_call_the_same_day_does_not_ask_the_model(self) -> None:
+        store = _StoreStub()
+        with patch("app.ai.recommend.build_context", return_value={"today": "2026-11-18"}):
+            with patch("app.ai.recommend.client.chat", return_value=_ANSWER) as chat:
+                with store:
+                    first = recommend()
+                    second = recommend()
+        chat.assert_called_once()
+        self.assertFalse(first["stored"])
+        self.assertTrue(second["stored"])
+
+    def test_regenerate_asks_again_and_replaces(self) -> None:
+        store = _StoreStub()
+        with patch("app.ai.recommend.build_context", return_value={"today": "2026-11-18"}):
+            with patch("app.ai.recommend.client.chat", return_value=_ANSWER) as chat:
+                with store:
+                    recommend()
+                    again = recommend(regenerate=True)
+        self.assertEqual(chat.call_count, 2)
+        self.assertFalse(again["stored"])

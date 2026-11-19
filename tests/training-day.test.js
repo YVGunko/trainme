@@ -20,10 +20,11 @@ test('cron auth accepts only the bearer secret', () => {
   assert.equal(cronAuthorized('Bearer secret-value', ''), false);
 });
 
-test('vercel.json runs the Garmin load at 09:00 and 21:00 UTC+3', () => {
+test('vercel.json runs the load and the coach at 11:00 and 23:00 UTC+3', () => {
   const config = JSON.parse(fs.readFileSync(new URL('../vercel.json', import.meta.url), 'utf8'));
+  // 11:00 and 23:00 at UTC+3 are 08:00 and 20:00 UTC.
   assert.deepEqual(config.crons, [
-    { path: '/api/cron/garmin-today', schedule: '0 6 * * *' },
-    { path: '/api/cron/garmin-today', schedule: '0 18 * * *' },
+    { path: '/api/cron/garmin-today', schedule: '0 8 * * *' },
+    { path: '/api/cron/garmin-today', schedule: '0 20 * * *' },
   ]);
 });

@@ -169,6 +169,109 @@ class ImportHistoryTest(unittest.TestCase):
                 import_history("2026-01-01", "2026-02-01")
 
 
+class ImportIdempotencyTest(unittest.TestCase):
+    """Running the import over the same days again must not duplicate or lose."""
+
+    def _client(self) -> MagicMock:
+        client = MagicMock()
+        client.client.dumps.return_value = "{}"
+        client.profile_id = 7
+        client.get_activities_by_date.return_value = [
+            {
+                "activityId": 1,
+                "startTimeLocal": "2026-11-17T09:00:00.0",
+                "activityType": {"typeKey": "indoor_cycling"},
+                "duration": 3600.0,
+            }
+        ]
+        client.get_activity.return_value = {
+            "summaryDTO": {"directWorkoutRpe": 70, "directWorkoutFeel": 50},
+            "description": "тяжело",
+        }
+        return client
+
+    def test_the_upsert_is_keyed_on_the_garmin_id(self) -> None:
+        from app.storage.db import upsert_activity_history
+
+        connection = MagicMock()
+        rows = [
+            {
+                "garmin_activity_id": 1,
+                "start_local": "2026-11-17 09:00:00",
+                "day": "2026-11-17",
+                "sport": "indoor_cycling",
+                "duration_sec": 3600.0,
+                "distance_m": 0.0,
+                "avg_hr": 120.0,
+                "max_hr": 140.0,
+                "calories": 400.0,
+                "training_load": 50.0,
+                "perceived_effort": 7,
+                "feel": 50,
+                "activity_note": "тяжело",
+            }
+        ]
+        upsert_activity_history(connection, rows)
+        sql = " ".join(connection.cursor.return_value.__enter__.return_value.executemany.call_args.args[0].split()).lower()
+        self.assertIn("on conflict (garmin_activity_id) do update", sql)
+
+    def test_a_second_import_does_not_re_ask_for_a_known_rating(self) -> None:
+        # The rolling window would otherwise re-read the same week every day.
+        client = self._client()
+        with _patched_import(client):
+            with patch("app.garmin.history.stored_history_ids", return_value={1}):
+                with patch("app.garmin.history.upsert_activity_history", return_value=1):
+                    with patch("app.garmin.history.activity_history_count", return_value=1):
+                        result = import_history("2026-11-10", "2026-11-18")
+        client.get_activity.assert_not_called()
+        self.assertEqual(result["evaluated_count"], 0)
+
+    def test_a_new_activity_is_asked_for_its_rating(self) -> None:
+        client = self._client()
+        with _patched_import(client):
+            with patch("app.garmin.history.stored_history_ids", return_value=set()):
+                saved = {}
+                with patch(
+                    "app.garmin.history.upsert_activity_history",
+                    side_effect=lambda conn, rows: saved.update({"rows": rows}) or len(rows),
+                ):
+                    with patch("app.garmin.history.activity_history_count", return_value=1):
+                        result = import_history("2026-11-10", "2026-11-18")
+        client.get_activity.assert_called_once_with("1")
+        self.assertEqual(result["evaluated_count"], 1)
+        row = saved["rows"][0]
+        self.assertEqual(row["perceived_effort"], 7)
+        self.assertEqual(row["feel"], 50)
+        self.assertEqual(row["activity_note"], "тяжело")
+
+    def test_a_failed_rating_does_not_lose_the_session(self) -> None:
+        client = self._client()
+        client.get_activity.side_effect = RuntimeError("boom")
+        with _patched_import(client):
+            with patch("app.garmin.history.stored_history_ids", return_value=set()):
+                saved = {}
+                with patch(
+                    "app.garmin.history.upsert_activity_history",
+                    side_effect=lambda conn, rows: saved.update({"rows": rows}) or len(rows),
+                ):
+                    with patch("app.garmin.history.activity_history_count", return_value=1):
+                        result = import_history("2026-11-10", "2026-11-18")
+        self.assertEqual(result["stored_count"], 1)
+        self.assertEqual(result["evaluated_count"], 0)
+        # No rating was read, so the row simply has no rating to store.
+        self.assertIsNone(saved["rows"][0].get("perceived_effort"))
+
+    def test_a_rate_limit_during_evaluation_stops_the_import(self) -> None:
+        from garminconnect import GarminConnectTooManyRequestsError
+
+        client = self._client()
+        client.get_activity.side_effect = GarminConnectTooManyRequestsError("slow")
+        with _patched_import(client):
+            with patch("app.garmin.history.stored_history_ids", return_value=set()):
+                with self.assertRaises(GarminConnectTooManyRequestsError):
+                    import_history("2026-11-10", "2026-11-18")
+
+
 class ProfileRouteTest(unittest.TestCase):
     def test_requires_the_service_secret(self) -> None:
         client = TestClient(app)

@@ -24,6 +24,9 @@ from app.garmin.archive import (
     _login,
 )
 from app.garmin.client import GarminNotConfigured
+from app.garmin.evaluation import read_evaluation
+from garminconnect import GarminConnectTooManyRequestsError
+
 from app.storage.crypto import EncryptionKeyMissing
 from app.storage.db import (
     DatabaseNotConfigured,
@@ -32,6 +35,7 @@ from app.storage.db import (
     ensure_schema,
     load_token,
     save_token,
+    stored_history_ids,
     upsert_activity_history,
 )
 
@@ -79,6 +83,32 @@ def import_history(start: str, end: str) -> dict[str, Any]:
             skipped += 1
             continue
 
+    # The athlete's own verdict lives on the single-activity endpoint, not in the
+    # list, so it costs one request each. Only new activities are asked about:
+    # a rolling window would otherwise re-read the same week every day.
+    with connect() as connection:
+        known = stored_history_ids(
+            connection, [row["garmin_activity_id"] for row in rows]
+        )
+    evaluated = 0
+    for row in rows:
+        if row["garmin_activity_id"] in known:
+            continue
+        try:
+            detail = client.get_activity(str(row["garmin_activity_id"]))
+        except GarminConnectTooManyRequestsError:
+            raise
+        except Exception as error:
+            # A rating is a bonus, not the reason for the import.
+            logger.warning(
+                "Activity evaluation failed: %s %s",
+                row["garmin_activity_id"],
+                type(error).__name__,
+            )
+            continue
+        row.update(read_evaluation(detail))
+        evaluated += 1
+
     with connect() as connection:
         stored = upsert_activity_history(connection, rows)
         total = activity_history_count(connection)
@@ -88,6 +118,7 @@ def import_history(start: str, end: str) -> dict[str, Any]:
         "end": end_date.isoformat(),
         "activity_count": len(activities),
         "stored_count": stored,
+        "evaluated_count": evaluated,
         "skipped_count": skipped,
         "history_total": total,
     }
