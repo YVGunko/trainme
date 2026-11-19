@@ -573,6 +573,13 @@ tr.is-selected td {
   border-top: 1px solid var(--line);
 }
 
+/* Three tabs on a phone now, so they share the bar evenly. */
+.plan-pane {
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+}
+
 .plan-workout-head {
   display: flex;
   flex-wrap: wrap;
@@ -665,17 +672,23 @@ tr.is-selected td {
     min-height: 0;
   }
 
+  .shell.is-today .plan-pane,
   .shell.is-today .activities-pane,
-  .shell.is-activities .today-pane {
+  .shell.is-plan .today-pane,
+  .shell.is-plan .activities-pane,
+  .shell.is-activities .today-pane,
+  .shell.is-activities .plan-pane {
     display: none;
   }
 
   .today-pane,
+  .plan-pane,
   .activities-pane {
     flex: 1;
     min-height: 0;
   }
 
+  .plan-pane,
   .activities-pane {
     overflow: auto;
   }

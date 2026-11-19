@@ -3,12 +3,13 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { ActivityBoard } from '@/components/activity-board';
+import { CoachPlan } from '@/components/coach-plan';
 import { DayCard } from '@/components/day-card';
 import { DayPrompt } from '@/components/day-prompt';
 import { WorkoutEditor } from '@/components/workout-editor';
 
 // Phone layout is CSS width <= 640px (iPhone 16 portrait is 393). Landscape is wider and uses the desktop arrangement.
-// Phone sections are Today and Activities. Archive import and the Garmin report live on /data, not here.
+// Phone sections are Today, Plan, and Activities. Archive import and the Garmin report live on /data, not here.
 export function ActivityScreen({ activities }) {
   const router = useRouter();
   const [section, setSection] = useState('today');
@@ -20,9 +21,12 @@ export function ActivityScreen({ activities }) {
   }
 
   return (
-    <div className={section === 'today' ? 'shell is-today' : 'shell is-activities'}>
+    <div className={sectionClass(section)}>
       <section className="day-card today-pane">
         <DayCard onSaved={() => setCheckInVersion((version) => version + 1)} />
+      </section>
+      <section className="plan-pane" aria-label="Coach plan">
+        <CoachPlan />
       </section>
       <section className="activities-pane" aria-label="Activities">
         <div className="phone-only">
@@ -33,6 +37,9 @@ export function ActivityScreen({ activities }) {
       <nav className="tabbar" aria-label="Sections">
         <button type="button" aria-current={section === 'today' ? 'page' : undefined} onClick={() => setSection('today')}>
           Today
+        </button>
+        <button type="button" aria-current={section === 'plan' ? 'page' : undefined} onClick={() => setSection('plan')}>
+          Plan
         </button>
         <button
           type="button"
@@ -47,4 +54,10 @@ export function ActivityScreen({ activities }) {
       ) : null}
     </div>
   );
+}
+
+function sectionClass(section) {
+  if (section === 'plan') return 'shell is-plan';
+  if (section === 'activities') return 'shell is-activities';
+  return 'shell is-today';
 }
