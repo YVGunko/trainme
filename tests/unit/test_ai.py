@@ -499,7 +499,7 @@ class _StoreStub:
     """Stand-in for the day store, so no test touches a database."""
 
     def __init__(self) -> None:
-        self.saved: list[tuple[str, dict]] = []
+        self.saved: list[tuple[str, dict, str | None]] = []
 
     def __enter__(self) -> "_StoreStub":
         self._patchers = [
@@ -515,16 +515,19 @@ class _StoreStub:
 
     def _load(self, connection, day):
         # A plan stays in force until its last day has passed.
-        for stored_day, payload in reversed(self.saved):
+        for stored_day, payload, fingerprint in reversed(self.saved):
             days = payload.get("days") or []
             last = days[-1].get("date") if days else None
             if stored_day <= day and (last is None or last >= day):
-                return payload | {"built_on": stored_day}
+                return payload | {
+                    "built_on": stored_day,
+                    "input_fingerprint": fingerprint,
+                }
         return None
 
-    def _save(self, connection, day, payload):
-        self.saved = [(d, p) for d, p in self.saved if d != day]
-        self.saved.append((day, payload))
+    def _save(self, connection, day, payload, fingerprint=None):
+        self.saved = [(d, p, f) for d, p, f in self.saved if d != day]
+        self.saved.append((day, payload, fingerprint))
 
     def __exit__(self, *args) -> bool:
         for patcher in reversed(self._patchers):
@@ -581,17 +584,36 @@ class StoredRecommendationTest(unittest.TestCase):
         self.assertFalse(after["stored"])
         self.assertEqual(chat.call_count, 2)
 
-    def test_adjusting_sends_only_the_remaining_days(self) -> None:
+    def test_an_unchanged_input_does_not_ask_the_model_again(self) -> None:
+        # The cron runs twice a day. When nothing happened in between, asking
+        # would rewrite a plan from identical input.
         store = _StoreStub()
-        sent: list[dict] = []
-        with patch("app.ai.recommend.build_context", return_value={}):
-            with patch("app.ai.recommend.client.chat", side_effect=lambda msgs, schema: sent.append(msgs) or _ANSWER):
+        sent: list[list] = []
+        with patch("app.ai.recommend.build_context", return_value={"today": "2026-11-19"}):
+            with patch("app.ai.recommend.client.chat", side_effect=lambda m, s: sent.append(m) or _ANSWER):
                 with store:
                     recommend(date(2026, 11, 19))
-                    recommend(date(2026, 11, 20))
+                    second = recommend(date(2026, 11, 19))
+        self.assertEqual(len(sent), 1)
+        self.assertTrue(second["stored"])
+        self.assertFalse(second["adjusted"])
+        self.assertTrue(second["unchanged"])
+
+    def test_a_changed_input_asks_for_a_revision(self) -> None:
+        store = _StoreStub()
+        sent: list[list] = []
+        contexts = [
+            {"today": "2026-11-19", "wellness": []},
+            {"today": "2026-11-19", "wellness": [{"date": "2026-11-19", "injury": 3}]},
+        ]
+        with patch("app.ai.recommend.build_context", side_effect=contexts):
+            with patch("app.ai.recommend.client.chat", side_effect=lambda m, s: sent.append(m) or _ANSWER):
+                with store:
+                    recommend(date(2026, 11, 19))
+                    second = recommend(date(2026, 11, 19))
         self.assertEqual(len(sent), 2)
-        # The second call carries the plan still in force, starting at its own day.
         self.assertIn("existing_plan", sent[1][1]["content"])
+        self.assertTrue(second["adjusted"])
 
     def test_a_failed_adjustment_keeps_the_stored_plan(self) -> None:
         store = _StoreStub()

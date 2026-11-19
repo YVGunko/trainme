@@ -663,10 +663,13 @@ def load_active_recommendation(
     A plan is built for a stretch of days, so it stays in force until its last
     day has passed. Looking up by the day it was built would throw the week away
     every midnight.
+
+    The stored fingerprint travels with the payload so a caller can decide
+    whether the inputs that produced this plan still hold.
     """
     rows = connection.execute(
         """
-        SELECT day::text, payload
+        SELECT day::text, payload, input_fingerprint
         FROM daily_recommendation
         WHERE day <= %s::date
         ORDER BY day DESC
@@ -674,7 +677,7 @@ def load_active_recommendation(
         """,
         (day,),
     ).fetchall()
-    for built_on, payload in rows:
+    for built_on, payload, fingerprint in rows:
         if not isinstance(payload, dict):
             continue
         days = payload.get("days")
@@ -682,38 +685,48 @@ def load_active_recommendation(
             continue
         last = days[-1].get("date") if isinstance(days[-1], dict) else None
         if isinstance(last, str) and last >= day:
-            return payload | {"built_on": built_on}
+            return payload | {
+                "built_on": built_on,
+                "input_fingerprint": fingerprint,
+            }
     return None
 
 
 def save_recommendation(
-    connection: psycopg.Connection, day: str, payload: dict[str, Any]
+    connection: psycopg.Connection,
+    day: str,
+    payload: dict[str, Any],
+    fingerprint: str | None = None,
 ) -> None:
     """Store the day's recommendation, keeping the first one written."""
     connection.execute(
         """
-        INSERT INTO daily_recommendation (day, payload)
-        VALUES (%s::date, %s::jsonb)
+        INSERT INTO daily_recommendation (day, payload, input_fingerprint)
+        VALUES (%s::date, %s::jsonb, %s)
         ON CONFLICT (day) DO NOTHING
         """,
-        (day, json.dumps(payload, ensure_ascii=False)),
+        (day, json.dumps(payload, ensure_ascii=False), fingerprint),
     )
     connection.commit()
 
 
 def replace_recommendation(
-    connection: psycopg.Connection, day: str, payload: dict[str, Any]
+    connection: psycopg.Connection,
+    day: str,
+    payload: dict[str, Any],
+    fingerprint: str | None = None,
 ) -> None:
     """Overwrite the day's recommendation, for an explicit regeneration."""
     connection.execute(
         """
-        INSERT INTO daily_recommendation (day, payload)
-        VALUES (%s::date, %s::jsonb)
+        INSERT INTO daily_recommendation (day, payload, input_fingerprint)
+        VALUES (%s::date, %s::jsonb, %s)
         ON CONFLICT (day) DO UPDATE
         SET payload = EXCLUDED.payload,
+            input_fingerprint = EXCLUDED.input_fingerprint,
             created_at = now()
         """,
-        (day, json.dumps(payload, ensure_ascii=False)),
+        (day, json.dumps(payload, ensure_ascii=False), fingerprint),
     )
     connection.commit()
 

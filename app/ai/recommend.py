@@ -18,6 +18,7 @@ from typing import Any
 
 from app.ai import client, exercise_resolve
 from app.ai.exercise_match import match_exercise
+from app.ai.fingerprint import context_fingerprint
 from app.ai.prompt import build_messages
 from app.ai.schema import ANSWER_SCHEMA, AnswerShapeError, read_answer
 from app.coach_context import build_context, coverage
@@ -75,10 +76,23 @@ def recommend(
     if stored is not None and not regenerate:
         if not adjust:
             return stored | {"stored": True, "adjusted": False}
-        result, changed = _adjust(now, stored)
+        context = build_context(now)
+        if _unchanged(stored, context):
+            # Same input as the plan was built from: asking again would rewrite
+            # an answer that is already right.
+            return stored | {"stored": True, "adjusted": False, "unchanged": True}
+        result, changed = _adjust(now, stored, context)
         return result | {"stored": True, "adjusted": changed}
 
     return _fresh(now) | {"stored": False, "adjusted": False}
+
+
+def _unchanged(stored: dict[str, Any], context: dict[str, Any]) -> bool:
+    """Whether the plan was built from exactly this input."""
+    previous = stored.get("input_fingerprint")
+    if not isinstance(previous, str) or not previous:
+        return False
+    return previous == context_fingerprint(context)
 
 
 def _fresh(now: date) -> dict[str, Any]:
@@ -95,11 +109,13 @@ def _fresh(now: date) -> dict[str, Any]:
     }
     if unmatched:
         result["unmatched_exercises"] = unmatched
-    _remember(now.isoformat(), result, replace=True)
+    _remember(now.isoformat(), result, replace=True, context=context)
     return result
 
 
-def _adjust(now: date, stored: dict[str, Any]) -> tuple[dict[str, Any], bool]:
+def _adjust(
+    now: date, stored: dict[str, Any], context: dict[str, Any]
+) -> tuple[dict[str, Any], bool]:
     """Ask the model to revise the remaining days of a stored plan.
 
     Days that have already passed are dropped rather than revised: the athlete
@@ -110,7 +126,6 @@ def _adjust(now: date, stored: dict[str, Any]) -> tuple[dict[str, Any], bool]:
     if not remaining:
         return _fresh(now), True
 
-    context = build_context(now)
     context["existing_plan"] = remaining
     try:
         answer = _ask(build_messages(context))
@@ -130,7 +145,8 @@ def _adjust(now: date, stored: dict[str, Any]) -> tuple[dict[str, Any], bool]:
     }
     if unmatched:
         result["unmatched_exercises"] = unmatched
-    _remember(stored.get("built_on") or now.isoformat(), result, replace=True)
+    # Stored under the day the plan was first built, so the week keeps its range.
+    _remember(stored.get("built_on") or now.isoformat(), result, replace=True, context=context)
     return result, True
 
 
@@ -149,13 +165,19 @@ def _active(day: str) -> dict[str, Any] | None:
         return load_active_recommendation(connection, day)
 
 
-def _remember(day: str, result: dict[str, Any], replace: bool) -> None:
+def _remember(
+    day: str,
+    result: dict[str, Any],
+    replace: bool,
+    context: dict[str, Any] | None = None,
+) -> None:
+    fingerprint = None if context is None else context_fingerprint(context)
     try:
         with connect() as connection:
             if replace:
-                replace_recommendation(connection, day, result)
+                replace_recommendation(connection, day, result, fingerprint)
             else:
-                save_recommendation(connection, day, result)
+                save_recommendation(connection, day, result, fingerprint)
     except Exception as error:
         # The answer is already in hand. Losing the stored copy would only mean
         # the next run asks again, so it must not fail the response.
