@@ -85,11 +85,55 @@ def _execute_script(connection: psycopg.Connection, script: str) -> None:
 
 
 def _split_sql(script: str) -> list[str]:
+    """Split a migration into statements on semicolons outside quotes and comments.
+
+    A semicolon inside a comment or a dollar-quoted body is not a statement end,
+    and splitting there produced garbage that failed only at execution time.
+    """
     parts: list[str] = []
     current: list[str] = []
     in_dollar = False
+    in_line_comment = False
+    in_block_comment = False
+    quote: str | None = None
     index = 0
     while index < len(script):
+        if in_line_comment:
+            current.append(script[index])
+            if script[index] == "\n":
+                in_line_comment = False
+            index += 1
+            continue
+        if in_block_comment:
+            if script.startswith("*/", index):
+                current.append("*/")
+                in_block_comment = False
+                index += 2
+                continue
+            current.append(script[index])
+            index += 1
+            continue
+        if quote is not None:
+            current.append(script[index])
+            if script[index] == quote:
+                quote = None
+            index += 1
+            continue
+        if script.startswith("--", index):
+            in_line_comment = True
+            current.append("--")
+            index += 2
+            continue
+        if script.startswith("/*", index):
+            in_block_comment = True
+            current.append("/*")
+            index += 2
+            continue
+        if script[index] in ("'", '"'):
+            quote = script[index]
+            current.append(script[index])
+            index += 1
+            continue
         if script.startswith("$$", index):
             in_dollar = not in_dollar
             current.append("$$")

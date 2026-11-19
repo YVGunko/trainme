@@ -5,6 +5,7 @@ import struct
 import unittest
 import zipfile
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock, patch
 
@@ -373,6 +374,39 @@ class MigrationSqlTest(unittest.TestCase):
         statements = _split_sql(script)
         self.assertEqual(len(statements), 2)
         self.assertTrue(statements[1].startswith("DO $$"))
+
+    def test_a_semicolon_in_a_line_comment_does_not_split(self) -> None:
+        # A real migration failed on this: the comment said "10-100; this app
+        # keeps 1-10" and the splitter cut the statement in half.
+        script = "-- Garmin stores effort as 10-100; this app keeps 1-10\nSELECT 1;\n"
+        statements = _split_sql(script)
+        self.assertEqual(len(statements), 1)
+        self.assertIn("SELECT 1", statements[0])
+
+    def test_a_semicolon_in_a_string_literal_does_not_split(self) -> None:
+        script = "INSERT INTO t VALUES ('a;b');\nSELECT 2;\n"
+        statements = _split_sql(script)
+        self.assertEqual(len(statements), 2)
+        self.assertIn("'a;b'", statements[0])
+
+    def test_a_semicolon_in_a_block_comment_does_not_split(self) -> None:
+        script = "/* one; two */\nSELECT 3;\n"
+        statements = _split_sql(script)
+        self.assertEqual(len(statements), 1)
+        self.assertIn("SELECT 3", statements[0])
+
+    def test_every_migration_splits_into_runnable_statements(self) -> None:
+        # A statement that starts with a comment marker and has no newline means
+        # the splitter cut inside a comment, which fails only when executed.
+        root = Path(__file__).resolve().parents[2] / "prisma" / "migrations"
+        for path in sorted(root.glob("*/migration.sql")):
+            with self.subTest(migration=path.parent.name):
+                for statement in _split_sql(path.read_text()):
+                    head = statement.lstrip()
+                    self.assertFalse(
+                        head.startswith("--") and "\n" not in statement,
+                        f"{path.parent.name} split inside a comment: {statement[:60]}",
+                    )
 
 
 def _running_fit(start: datetime) -> bytes:

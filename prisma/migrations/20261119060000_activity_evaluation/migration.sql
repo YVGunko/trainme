@@ -3,8 +3,8 @@ ALTER TABLE activity_history ADD COLUMN IF NOT EXISTS perceived_effort smallint;
 ALTER TABLE activity_history ADD COLUMN IF NOT EXISTS feel smallint;
 ALTER TABLE activity_history ADD COLUMN IF NOT EXISTS activity_note text;
 
--- Garmin stores perceived effort as 10-100; this app keeps the 1-10 the athlete
--- entered, so a value outside that range means a bad read and is not stored.
+-- Garmin stores perceived effort as 10-100, so this app keeps the 1-10 the
+-- athlete entered. A value outside that range means a bad read, not a rating.
 ALTER TABLE activity_history
     DROP CONSTRAINT IF EXISTS activity_history_perceived_effort_check;
 ALTER TABLE activity_history
