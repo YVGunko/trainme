@@ -25,7 +25,8 @@ from app.garmin.workout import WorkoutSpecError, build_workout
 from app.storage.db import (
     connect,
     ensure_schema,
-    load_recommendation,
+    load_active_recommendation,
+    replace_recommendation,
     save_recommendation,
 )
 
@@ -50,24 +51,40 @@ class RecommendationError(Exception):
         self.partial = partial or {}
 
 
-def recommend(today: date | None = None, regenerate: bool = False) -> dict[str, Any]:
-    """Return a week plan, with every workout validated and ready to send.
+def recommend(
+    today: date | None = None,
+    regenerate: bool = False,
+    adjust: bool = True,
+) -> dict[str, Any]:
+    """Return the plan in force, possibly adjusted, or a new one.
 
-    One plan is kept per day, so the 11:00 and 23:00 runs agree. ``regenerate``
-    asks for a new plan and replaces the stored one; the athlete is the only
-    caller that should set it, because two different plans in one day cannot be
-    told apart from an unstable one.
+    A plan covers a stretch of days, so it stays in force until its last day has
+    passed. Each call then does one of three things:
 
-    Nothing is uploaded. The caller shows the plan and decides which days to send.
+    - returns the stored plan unchanged, when it does not need touching;
+    - asks the model to adjust the remaining days, keeping the part of the week
+      that still fits what the athlete has actually done;
+    - builds a new week, when the old one has run out or ``regenerate`` is set.
+
+    ``adjust=False`` returns the stored plan as it is, for a plain read.
     """
-    day = (today or date.today()).isoformat()
-    if not regenerate:
-        stored = _stored(day)
-        if stored is not None:
-            return stored | {"stored": True}
+    now = today or date.today()
+    day = now.isoformat()
+    stored = _active(day)
 
-    context = build_context(today)
-    answer = _ask(context)
+    if stored is not None and not regenerate:
+        if not adjust:
+            return stored | {"stored": True, "adjusted": False}
+        result, changed = _adjust(now, stored)
+        return result | {"stored": True, "adjusted": changed}
+
+    return _fresh(now) | {"stored": False, "adjusted": False}
+
+
+def _fresh(now: date) -> dict[str, Any]:
+    """Build a week from scratch and store it."""
+    context = build_context(now)
+    answer = _ask(build_messages(context))
     days, unmatched = _with_catalog_names(answer["days"])
     payloads = _validated(days)
     result: dict[str, Any] = {
@@ -77,23 +94,68 @@ def recommend(today: date | None = None, regenerate: bool = False) -> dict[str, 
         "coverage": coverage(context),
     }
     if unmatched:
-        # Reported rather than dropped quietly: the athlete should know a
-        # prescribed movement is not on the watch.
         result["unmatched_exercises"] = unmatched
-    _remember(day, result)
-    return result | {"stored": False}
+    _remember(now.isoformat(), result, replace=True)
+    return result
 
 
-def _stored(day: str) -> dict[str, Any] | None:
+def _adjust(now: date, stored: dict[str, Any]) -> tuple[dict[str, Any], bool]:
+    """Ask the model to revise the remaining days of a stored plan.
+
+    Days that have already passed are dropped rather than revised: the athlete
+    cannot train them. What remains is sent back with the current data, so the
+    model can keep what still fits and change what does not.
+    """
+    remaining = _remaining(stored, now)
+    if not remaining:
+        return _fresh(now), True
+
+    context = build_context(now)
+    context["existing_plan"] = remaining
+    try:
+        answer = _ask(build_messages(context))
+    except RecommendationError as error:
+        # The stored plan is still usable. Losing it because a revision failed
+        # would leave the athlete with nothing, so the old plan is returned.
+        logger.warning("Plan adjustment failed: %s", error.reason)
+        return stored | {"days": remaining}, False
+
+    days, unmatched = _with_catalog_names(answer["days"])
+    payloads = _validated(days)
+    result: dict[str, Any] = {
+        "recommendation": answer["recommendation"],
+        "days": days,
+        "garmin_payloads": payloads,
+        "coverage": coverage(context),
+    }
+    if unmatched:
+        result["unmatched_exercises"] = unmatched
+    _remember(stored.get("built_on") or now.isoformat(), result, replace=True)
+    return result, True
+
+
+def _remaining(stored: dict[str, Any], now: date) -> list[dict[str, Any]]:
+    day = now.isoformat()
+    return [
+        entry
+        for entry in stored.get("days") or []
+        if isinstance(entry, dict) and str(entry.get("date", "")) >= day
+    ]
+
+
+def _active(day: str) -> dict[str, Any] | None:
     with connect() as connection:
         ensure_schema(connection)
-        return load_recommendation(connection, day)
+        return load_active_recommendation(connection, day)
 
 
-def _remember(day: str, result: dict[str, Any]) -> None:
+def _remember(day: str, result: dict[str, Any], replace: bool) -> None:
     try:
         with connect() as connection:
-            save_recommendation(connection, day, result)
+            if replace:
+                replace_recommendation(connection, day, result)
+            else:
+                save_recommendation(connection, day, result)
     except Exception as error:
         # The answer is already in hand. Losing the stored copy would only mean
         # the next run asks again, so it must not fail the response.
@@ -211,7 +273,6 @@ def _ask(context: dict[str, Any]) -> dict[str, Any]:
         return read_answer(raw)
     except AnswerShapeError as error:
         raise RecommendationError(str(error), "bad_answer") from error
-
 
 def _validated(days: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Run every session in the plan through the checks a Garmin upload uses.

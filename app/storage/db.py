@@ -655,6 +655,37 @@ def load_recommendation(
     return payload if isinstance(payload, dict) else None
 
 
+def load_active_recommendation(
+    connection: psycopg.Connection, day: str
+) -> dict[str, Any] | None:
+    """Return the newest plan whose days still cover ``day``, or None.
+
+    A plan is built for a stretch of days, so it stays in force until its last
+    day has passed. Looking up by the day it was built would throw the week away
+    every midnight.
+    """
+    rows = connection.execute(
+        """
+        SELECT day::text, payload
+        FROM daily_recommendation
+        WHERE day <= %s::date
+        ORDER BY day DESC
+        LIMIT 8
+        """,
+        (day,),
+    ).fetchall()
+    for built_on, payload in rows:
+        if not isinstance(payload, dict):
+            continue
+        days = payload.get("days")
+        if not isinstance(days, list) or not days:
+            continue
+        last = days[-1].get("date") if isinstance(days[-1], dict) else None
+        if isinstance(last, str) and last >= day:
+            return payload | {"built_on": built_on}
+    return None
+
+
 def save_recommendation(
     connection: psycopg.Connection, day: str, payload: dict[str, Any]
 ) -> None:

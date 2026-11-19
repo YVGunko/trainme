@@ -3,6 +3,7 @@ import json
 import os
 import unittest
 import urllib.error
+from datetime import date
 from unittest.mock import MagicMock, patch
 
 from app.ai import client, exercise_resolve
@@ -502,8 +503,9 @@ class _StoreStub:
 
     def __enter__(self) -> "_StoreStub":
         self._patchers = [
-            patch("app.ai.recommend.load_recommendation", side_effect=self._load),
+            patch("app.ai.recommend.load_active_recommendation", side_effect=self._load),
             patch("app.ai.recommend.save_recommendation", side_effect=self._save),
+            patch("app.ai.recommend.replace_recommendation", side_effect=self._save),
             patch("app.ai.recommend.connect"),
             patch("app.ai.recommend.ensure_schema"),
         ]
@@ -512,12 +514,16 @@ class _StoreStub:
         return self
 
     def _load(self, connection, day):
-        for stored_day, payload in self.saved:
-            if stored_day == day:
-                return payload
+        # A plan stays in force until its last day has passed.
+        for stored_day, payload in reversed(self.saved):
+            days = payload.get("days") or []
+            last = days[-1].get("date") if days else None
+            if stored_day <= day and (last is None or last >= day):
+                return payload | {"built_on": stored_day}
         return None
 
     def _save(self, connection, day, payload):
+        self.saved = [(d, p) for d, p in self.saved if d != day]
         self.saved.append((day, payload))
 
     def __exit__(self, *args) -> bool:
@@ -531,23 +537,77 @@ def _no_store() -> _StoreStub:
 
 
 class StoredRecommendationTest(unittest.TestCase):
-    def test_a_second_call_the_same_day_does_not_ask_the_model(self) -> None:
+    def test_a_plain_read_returns_the_stored_plan_without_asking(self) -> None:
         store = _StoreStub()
-        with patch("app.ai.recommend.build_context", return_value={"today": "2026-11-18"}):
+        with patch("app.ai.recommend.build_context", return_value={"today": "2026-11-19"}):
             with patch("app.ai.recommend.client.chat", return_value=_ANSWER) as chat:
                 with store:
-                    first = recommend()
-                    second = recommend()
+                    first = recommend(date(2026, 11, 19))
+                    second = recommend(date(2026, 11, 19), adjust=False)
         chat.assert_called_once()
         self.assertFalse(first["stored"])
         self.assertTrue(second["stored"])
+        self.assertFalse(second["adjusted"])
 
-    def test_regenerate_asks_again_and_replaces(self) -> None:
+    def test_regenerate_asks_again_and_replaces_the_stored_plan(self) -> None:
         store = _StoreStub()
-        with patch("app.ai.recommend.build_context", return_value={"today": "2026-11-18"}):
+        with patch("app.ai.recommend.build_context", return_value={"today": "2026-11-19"}):
             with patch("app.ai.recommend.client.chat", return_value=_ANSWER) as chat:
                 with store:
-                    recommend()
-                    again = recommend(regenerate=True)
+                    recommend(date(2026, 11, 19))
+                    again = recommend(date(2026, 11, 19), regenerate=True)
         self.assertEqual(chat.call_count, 2)
         self.assertFalse(again["stored"])
+        self.assertFalse(again["adjusted"])
+
+    def test_the_plan_stays_in_force_on_later_days(self) -> None:
+        store = _StoreStub()
+        with patch("app.ai.recommend.build_context", return_value={}):
+            with patch("app.ai.recommend.client.chat", return_value=_ANSWER) as chat:
+                with store:
+                    recommend(date(2026, 11, 19))
+                    later = recommend(date(2026, 11, 20), adjust=False)
+        self.assertTrue(later["stored"])
+        self.assertEqual(chat.call_count, 1)
+
+    def test_a_new_week_is_built_once_the_plan_runs_out(self) -> None:
+        store = _StoreStub()
+        with patch("app.ai.recommend.build_context", return_value={}):
+            with patch("app.ai.recommend.client.chat", return_value=_ANSWER) as chat:
+                with store:
+                    recommend(date(2026, 11, 19))
+                    # The fixture plan ends on 2026-11-20.
+                    after = recommend(date(2026, 11, 25), adjust=False)
+        self.assertFalse(after["stored"])
+        self.assertEqual(chat.call_count, 2)
+
+    def test_adjusting_sends_only_the_remaining_days(self) -> None:
+        store = _StoreStub()
+        sent: list[dict] = []
+        with patch("app.ai.recommend.build_context", return_value={}):
+            with patch("app.ai.recommend.client.chat", side_effect=lambda msgs, schema: sent.append(msgs) or _ANSWER):
+                with store:
+                    recommend(date(2026, 11, 19))
+                    recommend(date(2026, 11, 20))
+        self.assertEqual(len(sent), 2)
+        # The second call carries the plan still in force, starting at its own day.
+        self.assertIn("existing_plan", sent[1][1]["content"])
+
+    def test_a_failed_adjustment_keeps_the_stored_plan(self) -> None:
+        store = _StoreStub()
+
+        calls = {"n": 0}
+
+        def ask(msgs, schema):
+            calls["n"] += 1
+            if calls["n"] > 1:
+                raise client.LlmError("boom")
+            return _ANSWER
+
+        with patch("app.ai.recommend.build_context", return_value={}):
+            with patch("app.ai.recommend.client.chat", side_effect=ask):
+                with store:
+                    recommend(date(2026, 11, 19))
+                    kept = recommend(date(2026, 11, 20))
+        self.assertTrue(kept["stored"])
+        self.assertFalse(kept["adjusted"])

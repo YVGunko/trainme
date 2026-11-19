@@ -109,6 +109,9 @@ A wellness row may carry a note as well: free text about how the day felt, and
 often the only place a specific problem is named.
 
 How to read the data:
+- existing_plan, when present, is the plan already in force for the coming
+  days. Revise it rather than replacing it: keep what still fits the data, and
+  change only what no longer does. Days that have passed are not in it.
 - profile.notes is written by the athlete on purpose. Treat it as a standing
   constraint and follow it. It outranks any weekly total.
 - recent_days are Garmin daily metrics, oldest first. A null field means Garmin
