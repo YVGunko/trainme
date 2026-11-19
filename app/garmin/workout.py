@@ -1,6 +1,7 @@
 import base64
 import binascii
 import hashlib
+import json
 import logging
 import os
 from datetime import date
@@ -192,16 +193,35 @@ def build_workout(spec: dict[str, Any]) -> dict[str, Any]:
 
 
 def upload_workout(spec: dict[str, Any]) -> dict[str, Any]:
-    """Upload one workout. A date also puts it on the Garmin calendar."""
+    """Upload one workout. A date also puts it on the Garmin calendar.
+
+    Sending the same workout for the same day twice returns the first upload
+    instead of making a second one. The key is a hash of the workout plus its
+    date, so pressing the button again after a slow response cannot leave two
+    copies in the Garmin library.
+    """
     _mapping(spec, "workout")
     options = _options(spec)
     payload = build_workout(
         {key: value for key, value in spec.items() if key not in _OPTION_KEYS}
     )
 
+    fingerprint = _fingerprint(payload, options["date"])
+    already = _stored_import(fingerprint)
+    if already is not None:
+        result = {
+            "workout_id": already["workout_id"],
+            "name": already["name"],
+            "stored": False,
+        }
+        if options["date"] is not None:
+            result["date"] = options["date"]
+        return result
+
     client = _open_client()
     workout_id = _workout_id(client.upload_workout(payload))
-    result = {"workout_id": workout_id, "name": payload["workoutName"]}
+    _remember_import(fingerprint, workout_id, payload["workoutName"], payload["sportType"]["sportTypeKey"])
+    result = {"workout_id": workout_id, "name": payload["workoutName"], "stored": True}
     result.update(_deliver(client, workout_id, payload["sportType"]["sportTypeKey"], options))
     return result
 
@@ -330,6 +350,18 @@ def _read_fit(payload: bytes) -> tuple[dict[str, Any], list[str]]:
         return parse_workout_fit(payload)
     except WorkoutFitError as error:
         raise WorkoutFitFileError(str(error), error.reason) from error
+
+def _fingerprint(payload: dict[str, Any], day: str | None) -> str:
+    """Hash a built workout with its day, to recognise a repeated send.
+
+    The payload is normalised by dumping it with sorted keys, so cosmetic
+    differences in the source spec cannot produce a second upload of the same
+    session.
+    """
+    document = {"day": day, "workout": payload}
+    text = json.dumps(document, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+    return hashlib.sha256(text.encode()).hexdigest()
+
 
 def _stored_import(sha256: str) -> dict[str, Any] | None:
     with connect() as connection:

@@ -573,6 +573,20 @@ tr.is-selected td {
   border-top: 1px solid var(--line);
 }
 
+.plan-workout-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.plan-workout-head button {
+  min-height: 34px;
+  padding: 6px 12px;
+  font-size: 0.85rem;
+}
+
 .plan-workout:first-of-type {
   margin-top: 0;
   padding-top: 0;

@@ -18,6 +18,9 @@ export function CoachPlan() {
   const [plan, setPlan] = useState(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [sending, setSending] = useState({});
+  const [sentDays, setSentDays] = useState({});
+  const [sendErrors, setSendErrors] = useState({});
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
 
@@ -66,6 +69,30 @@ export function CoachPlan() {
       setError('Тренер не смог пересчитать план');
     } finally {
       setRefreshing(false);
+    }
+  }
+
+  async function sendToGarmin(key, day, workout) {
+    if (sending[key]) return;
+    setSending((current) => ({ ...current, [key]: true }));
+    setSendErrors((current) => ({ ...current, [key]: '' }));
+    try {
+      const response = await fetch('/api/workouts', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ workout, date: day.date }),
+      });
+      const data = await response.json();
+      if (!response.ok || !data.ok) {
+        setSendErrors((current) => ({ ...current, [key]: data.error || 'Не отправлено' }));
+        return;
+      }
+      const result = data.result || {};
+      setSentDays((current) => ({ ...current, [key]: `шаблон ${result.workout_id}` }));
+    } catch {
+      setSendErrors((current) => ({ ...current, [key]: 'Не отправлено' }));
+    } finally {
+      setSending((current) => ({ ...current, [key]: false }));
     }
   }
 
@@ -118,23 +145,44 @@ export function CoachPlan() {
                 {day.kind === 'rest' ? <span className="muted">отдых</span> : null}
               </div>
               {day.reason ? <p className="muted">{day.reason}</p> : null}
-              {(day.workouts || []).map((workout, index) => (
-                <div key={`${day.date}-${index}`} className="plan-workout">
-                  <strong>{workout.name}</strong>
-                  <span className="muted"> {workout.sport}</span>
-                  {workout.description ? <p className="muted">{workout.description}</p> : null}
-                  <ul className="sets">
-                    {(workout.blocks || []).map((block, blockIndex) => (
-                      <li key={blockIndex}>
-                        {block.repeat ? <span className="muted">{block.repeat}× </span> : null}
-                        {(block.steps || [])
-                          .map((step) => describeStep(step))
-                          .join(' · ')}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              ))}
+              {(day.workouts || []).map((workout, index) => {
+                const key = `${day.date}-${index}`;
+                const sent = sentDays[key];
+                return (
+                  <div key={key} className="plan-workout">
+                    <div className="plan-workout-head">
+                      <div>
+                        <strong>{workout.name}</strong>
+                        <span className="muted"> {workout.sport}</span>
+                      </div>
+                      {sent ? (
+                        <span className="muted">отправлено ({sent})</span>
+                      ) : (
+                        <button
+                          type="button"
+                          className="secondary"
+                          disabled={Boolean(sending[key])}
+                          onClick={() => sendToGarmin(key, day, workout)}
+                        >
+                          {sending[key] ? 'Отправка...' : 'В Garmin'}
+                        </button>
+                      )}
+                    </div>
+                    {workout.description ? <p className="muted">{workout.description}</p> : null}
+                    <ul className="sets">
+                      {(workout.blocks || []).map((block, blockIndex) => (
+                        <li key={blockIndex}>
+                          {block.repeat ? <span className="muted">{block.repeat}× </span> : null}
+                          {(block.steps || [])
+                            .map((step) => describeStep(step))
+                            .join(' · ')}
+                        </li>
+                      ))}
+                    </ul>
+                    {sendErrors[key] ? <p className="error">{sendErrors[key]}</p> : null}
+                  </div>
+                );
+              })}
             </li>
           ))}
         </ol>

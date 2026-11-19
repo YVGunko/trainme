@@ -293,18 +293,13 @@ class UploadWorkoutTest(unittest.TestCase):
                 }
             ],
         }
-        with patch.dict(os.environ, {"TOKEN_ENCRYPTION_KEY": "local-key"}):
-            with patch("app.garmin.workout.connect") as connect:
-                connect.return_value.__enter__.return_value = MagicMock()
-                with patch("app.garmin.workout.load_token", return_value="saved"):
-                    with patch("app.garmin.workout._login", return_value=client):
-                        with patch("app.garmin.workout.save_token"):
-                            result = upload_workout(spec)
+        with _patched_client(client):
+            result = upload_workout(spec)
         sent = client.upload_workout.call_args.args[0]
         self.assertEqual(sent["sportType"]["sportTypeKey"], "yoga")
         self.assertEqual(sent["workoutSegments"][0]["workoutSteps"][0]["exerciseName"], "STRETCH_PIGEON_POSE")
         client.schedule_workout.assert_not_called()
-        self.assertEqual(result, {"workout_id": 9, "name": "Hips"})
+        self.assertEqual(result, {"workout_id": 9, "name": "Hips", "stored": True})
 
 
 class UploadWithPushTest(unittest.TestCase):
@@ -332,7 +327,14 @@ class UploadWithPushTest(unittest.TestCase):
         client.push_workout_to_device.assert_called_once_with(55, 111)
         self.assertEqual(
             result,
-            {"workout_id": 55, "name": "Sweet spot", "device_id": 111, "pushed": True, "device_source": "sport"},
+            {
+                "workout_id": 55,
+                "name": "Sweet spot",
+                "device_id": 111,
+                "pushed": True,
+                "device_source": "sport",
+                "stored": True,
+            },
         )
 
     def test_a_rate_limited_push_keeps_the_uploaded_id(self) -> None:
@@ -579,6 +581,51 @@ class ImportFitWorkoutTest(unittest.TestCase):
         self.assertEqual(caught.exception.reason, "bad_base64")
 
 
+class UploadDeduplicationTest(unittest.TestCase):
+    def _spec(self) -> dict:
+        return {
+            "name": "Hips",
+            "sport": "yoga",
+            "blocks": [
+                {"steps": [{"kind": "interval", "end": {"type": "time", "seconds": 45}}]}
+            ],
+        }
+
+    def test_the_same_workout_for_the_same_day_is_not_uploaded_twice(self) -> None:
+        client = MagicMock()
+        client.client.dumps.return_value = "{}"
+        client.profile_id = 7
+        stored = {"workout_id": 42, "name": "Hips", "sport": "yoga", "date": None}
+        with _patched_client(client):
+            with patch("app.garmin.workout.find_workout_import", return_value=stored):
+                result = upload_workout(self._spec())
+        client.upload_workout.assert_not_called()
+        self.assertEqual(result["workout_id"], 42)
+        self.assertFalse(result["stored"])
+
+    def test_different_workouts_are_both_uploaded(self) -> None:
+        client = MagicMock()
+        client.client.dumps.return_value = "{}"
+        client.profile_id = 7
+        client.upload_workout.return_value = {"workoutId": 9}
+        first = self._spec()
+        second = {**self._spec(), "name": "Other hips"}
+        with _patched_client(client):
+            upload_workout(first)
+            upload_workout(second)
+        self.assertEqual(client.upload_workout.call_count, 2)
+
+    def test_the_same_workout_for_a_different_day_is_uploaded(self) -> None:
+        client = MagicMock()
+        client.client.dumps.return_value = "{}"
+        client.profile_id = 7
+        client.upload_workout.return_value = {"workoutId": 9}
+        with _patched_client(client):
+            upload_workout({**self._spec(), "date": "2026-11-19"})
+            upload_workout({**self._spec(), "date": "2026-11-20"})
+        self.assertEqual(client.upload_workout.call_count, 2)
+
+
 class WorkoutDateTest(unittest.TestCase):
     def test_accepts_a_calendar_date(self) -> None:
         self.assertEqual(parse_workout_date("2026-10-13"), "2026-10-13")
@@ -595,19 +642,16 @@ class ScheduleStrengthWorkoutTest(unittest.TestCase):
         client.profile_id = 7
         client.upload_workout.return_value = {"workoutId": 55}
 
-        with patch.dict(os.environ, {"TOKEN_ENCRYPTION_KEY": "local-key"}):
-            with patch("app.garmin.workout.connect") as connect:
-                connect.return_value.__enter__.return_value = MagicMock()
-                with patch("app.garmin.workout.load_token", return_value="saved"):
-                    with patch("app.garmin.workout._login", return_value=client):
-                        with patch("app.garmin.workout.save_token") as save_token:
-                            result = schedule_test_strength_workout("2026-10-13")
+        with _patched_client(client):
+            result = schedule_test_strength_workout("2026-10-13")
 
         uploaded = client.upload_workout.call_args.args[0]
         self.assertEqual(uploaded["workoutSegments"][0]["workoutSteps"][1]["workoutSteps"][0]["weightValue"], 5.0)
         client.schedule_workout.assert_called_once_with(55, "2026-10-13")
-        save_token.assert_called_once()
-        self.assertEqual(result, {"workout_id": 55, "date": "2026-10-13", "name": "trainme test"})
+        self.assertEqual(
+            result,
+            {"workout_id": 55, "date": "2026-10-13", "name": "trainme test", "stored": True},
+        )
 
     def test_keeps_the_id_when_scheduling_fails(self) -> None:
         client = MagicMock()
@@ -616,14 +660,9 @@ class ScheduleStrengthWorkoutTest(unittest.TestCase):
         client.upload_workout.return_value = {"workoutId": 55}
         client.schedule_workout.side_effect = RuntimeError("calendar down")
 
-        with patch.dict(os.environ, {"TOKEN_ENCRYPTION_KEY": "local-key"}):
-            with patch("app.garmin.workout.connect") as connect:
-                connect.return_value.__enter__.return_value = MagicMock()
-                with patch("app.garmin.workout.load_token", return_value=None):
-                    with patch("app.garmin.workout._login", return_value=client):
-                        with patch("app.garmin.workout.save_token"):
-                            with self.assertRaises(WorkoutNotScheduled) as caught:
-                                schedule_test_strength_workout("2026-10-13")
+        with _patched_client(client):
+            with self.assertRaises(WorkoutNotScheduled) as caught:
+                schedule_test_strength_workout("2026-10-13")
 
         self.assertEqual(caught.exception.workout_id, 55)
 
@@ -678,6 +717,10 @@ def _patched_client(client: Any) -> Any:
     stack.enter_context(patch("app.garmin.workout.save_token"))
     stack.enter_context(patch("app.garmin.workout.ensure_schema"))
     stack.enter_context(patch("app.garmin.workout.save_workout_delivery"))
+    # The upload is keyed on a fingerprint, so a test must not depend on a
+    # previous upload having been stored.
+    stack.enter_context(patch("app.garmin.workout.find_workout_import", return_value=None))
+    stack.enter_context(patch("app.garmin.workout.insert_workout_import"))
     return stack
 
 
