@@ -153,13 +153,25 @@ export function CoachPlan() {
 
 function describeStep(step) {
   const end = step.end || {};
-  const length =
-    end.type === 'time'
-      ? `${Math.round((end.seconds || 0) / 60)} мин`
-      : end.type === 'distance'
-        ? `${Math.round((end.meters || 0) / 100) / 10} км`
-        : `${end.count || 0} повт`;
-  const exercise = step.exercise ? `${step.exercise} ` : '';
+  const exercise = step.exercise ? ` ${step.exercise}` : '';
   const weight = step.weight_kg ? ` ${step.weight_kg} кг` : '';
-  return `${step.kind || ''} ${exercise}${length}${weight}`.replace(/\s+/g, ' ').trim();
+  const kind = step.kind || '';
+  return `${kind}${exercise}${weight} ${describeEnd(end)}`.replace(/\s+/g, ' ').trim();
+}
+
+function describeEnd(end) {
+  if (end.type === 'time') {
+    const seconds = Number(end.seconds) || 0;
+    // A 30 second hold must not read as "0 мин".
+    const length = seconds < 60 ? `${Math.round(seconds)} с` : `${Math.round(seconds / 60)} мин`;
+    return length;
+  }
+  if (end.type === 'distance') {
+    const metres = Number(end.meters) || 0;
+    return metres < 1000 ? `${Math.round(metres)} м` : `${Math.round(metres / 100) / 10} км`;
+  }
+  if (end.type === 'reps') {
+    return `${end.count || 0} повт`;
+  }
+  return end.type || '';
 }
