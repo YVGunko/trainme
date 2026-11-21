@@ -12,6 +12,7 @@ from garminconnect import (
 )
 
 from app.garmin.client import GarminNotConfigured
+from app.garmin.profile import record_garmin_profile
 from app.normalize.day import day_metrics, without_hrv_readings
 from app.normalize.store import write_day_metrics
 from app.storage.crypto import EncryptionKeyMissing
@@ -152,7 +153,11 @@ def archive_latest() -> dict[str, Any]:
                 day=target["day"],
             )
 
-    return {"activity": activity_record, "day": day_record}
+    return {
+        "activity": activity_record,
+        "day": day_record,
+        "profile": record_garmin_profile(client),
+    }
 
 
 def archive_period(start: str, end: str) -> dict[str, Any]:
@@ -227,6 +232,7 @@ def archive_period(start: str, end: str) -> dict[str, Any]:
         downloaded_days += _archive_day(client, user_id, day)
         current += timedelta(days=1)
 
+    profile = record_garmin_profile(client)
     return {
         "start": start_date.isoformat(),
         "end": end_date.isoformat(),
@@ -235,6 +241,7 @@ def archive_period(start: str, end: str) -> dict[str, Any]:
         "activities": archived,
         "day_count": (end_date - start_date).days + 1,
         "downloaded_day_count": downloaded_days,
+        "profile": profile,
     }
 
 

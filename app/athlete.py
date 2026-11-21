@@ -7,14 +7,16 @@ from datetime import date, timedelta
 from typing import Any
 
 from app.profile import parse_profile
+from app.profile_version import with_written_profile
 from app.storage.crypto import EncryptionKeyMissing
 from app.storage.db import (
     DatabaseNotConfigured,
     connect,
     ensure_schema,
+    insert_athlete_profile_version,
     load_activity_history,
     load_athlete_profile,
-    save_athlete_profile,
+    load_latest_athlete_profile,
 )
 
 # How much history a recommendation reads: enough to see a training block and a
@@ -34,7 +36,12 @@ def write_profile(body: Any) -> dict[str, Any]:
     profile = parse_profile(body)
     with connect() as connection:
         ensure_schema(connection)
-        return save_athlete_profile(connection, profile["notes"], profile["avoided_sports"])
+        latest = load_latest_athlete_profile(connection)
+        version = with_written_profile(latest, profile["notes"], profile["avoided_sports"])
+        if version is None:
+            return {"notes": latest["notes"], "avoided_sports": latest["avoided_sports"]}
+        stored = insert_athlete_profile_version(connection, version)
+    return {"notes": stored["notes"], "avoided_sports": stored["avoided_sports"]}
 
 
 def read_training_history(today: date | None = None) -> dict[str, Any]:
