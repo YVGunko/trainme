@@ -55,13 +55,20 @@ model workout_import {
   created_at        DateTime  @default(now()) @db.Timestamptz(6)
 }
 
-/// The one athlete this app plans for. Free text holds recurring problems the
-/// daily wellness note should not carry, such as a hamstring that keeps flaring.
+/// Versions of one athlete. A row is written only when the fingerprint of the
+/// Garmin profile plus the Profile-tab text differs from the previous row.
 model athlete_profile {
-  id            Int      @id @db.SmallInt
-  notes         String?
+  recorded_at    DateTime @id @db.Timestamptz(6)
+  notes          String?
   avoided_sports String[] @default([])
-  updated_at    DateTime @default(now()) @updatedAt @db.Timestamptz(6)
+  birth_date     DateTime? @db.Date
+  weight_kg      Float?
+  height_cm      Float?
+  cycling_ftp    Float?
+  hr_zones       Json     @default("[]")
+  power_zones    Json     @default("[]")
+  content_hash   String?
+  source_sha256  String?
 }
 
 /// One activity from the Garmin activity list, kept without its FIT file.

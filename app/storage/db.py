@@ -76,6 +76,7 @@ def ensure_schema(connection: psycopg.Connection) -> None:
         )
         for migration in migrations:
             _execute_script(connection, migration.read_text())
+        backfill_athlete_profile_hashes(connection)
         connection.commit()
 
 
@@ -490,34 +491,108 @@ def save_workout_delivery(
     connection.commit()
 
 
-def load_athlete_profile(connection: psycopg.Connection) -> dict[str, Any] | None:
+_PROFILE_COLUMNS = """
+    recorded_at, notes, avoided_sports, birth_date::text, weight_kg, height_cm,
+    cycling_ftp, hr_zones, power_zones, content_hash, source_sha256
+"""
+
+
+def load_latest_athlete_profile(connection: psycopg.Connection) -> dict[str, Any] | None:
     row = connection.execute(
-        "SELECT notes, avoided_sports FROM athlete_profile WHERE id = 1"
+        f"""
+        SELECT {_PROFILE_COLUMNS}
+        FROM athlete_profile
+        ORDER BY recorded_at DESC
+        LIMIT 1
+        """
     ).fetchone()
     if row is None:
         return None
-    return {"notes": row[0], "avoided_sports": list(row[1] or [])}
+    return _profile_row(row)
 
 
-def save_athlete_profile(
-    connection: psycopg.Connection,
-    notes: str | None,
-    avoided_sports: list[str],
+def load_athlete_profile(connection: psycopg.Connection) -> dict[str, Any] | None:
+    latest = load_latest_athlete_profile(connection)
+    if latest is None:
+        return None
+    return {"notes": latest["notes"], "avoided_sports": latest["avoided_sports"]}
+
+
+def insert_athlete_profile_version(
+    connection: psycopg.Connection, version: dict[str, Any]
 ) -> dict[str, Any]:
+    from psycopg.types.json import Json
+
     row = connection.execute(
-        """
-        INSERT INTO athlete_profile (id, notes, avoided_sports)
-        VALUES (1, %s, %s)
-        ON CONFLICT (id) DO UPDATE
-        SET notes = EXCLUDED.notes,
-            avoided_sports = EXCLUDED.avoided_sports,
-            updated_at = now()
-        RETURNING notes, avoided_sports
+        f"""
+        INSERT INTO athlete_profile (
+            recorded_at, notes, avoided_sports, birth_date, weight_kg, height_cm,
+            cycling_ftp, hr_zones, power_zones, content_hash, source_sha256
+        )
+        VALUES (
+            COALESCE(%s::timestamptz, clock_timestamp()),
+            %s, %s, %s::date, %s, %s, %s, %s, %s, %s, %s
+        )
+        RETURNING {_PROFILE_COLUMNS}
         """,
-        (notes, avoided_sports),
+        (
+            version.get("recorded_at"),
+            version.get("notes"),
+            list(version.get("avoided_sports") or []),
+            version.get("birth_date"),
+            version.get("weight_kg"),
+            version.get("height_cm"),
+            version.get("cycling_ftp"),
+            Json(version.get("hr_zones") or []),
+            Json(version.get("power_zones") or []),
+            version["content_hash"],
+            version.get("source_sha256"),
+        ),
     ).fetchone()
     connection.commit()
-    return {"notes": row[0], "avoided_sports": list(row[1] or [])}
+    return _profile_row(row)
+
+
+def backfill_athlete_profile_hashes(connection: psycopg.Connection) -> None:
+    """Fill fingerprints for rows migrated from the single-row profile table."""
+    from app.profile_version import profile_hash
+
+    rows = connection.execute(
+        f"""
+        SELECT {_PROFILE_COLUMNS}
+        FROM athlete_profile
+        WHERE content_hash IS NULL
+        """
+    ).fetchall()
+    if not isinstance(rows, list):
+        return
+    for row in rows:
+        version = _profile_row(row)
+        connection.execute(
+            """
+            UPDATE athlete_profile
+            SET content_hash = %s
+            WHERE recorded_at = %s AND content_hash IS NULL
+            """,
+            (profile_hash(version), version["recorded_at"]),
+        )
+
+
+def _profile_row(row: tuple) -> dict[str, Any]:
+    recorded_at = row[0]
+    return {
+        "recorded_at": recorded_at.isoformat() if hasattr(recorded_at, "isoformat") else recorded_at,
+        "notes": row[1],
+        "avoided_sports": list(row[2] or []),
+        "birth_date": row[3],
+        "weight_kg": None if row[4] is None else float(row[4]),
+        "height_cm": None if row[5] is None else float(row[5]),
+        "cycling_ftp": None if row[6] is None else float(row[6]),
+        "hr_zones": row[7] if isinstance(row[7], list) else [],
+        "power_zones": row[8] if isinstance(row[8], list) else [],
+        "content_hash": row[9],
+        "source_sha256": row[10],
+    }
 
 
 def upsert_activity_history(
