@@ -60,7 +60,7 @@ def build_context(today: date | None = None) -> dict[str, Any]:
 
     with connect() as connection:
         ensure_schema(connection)
-        profile = load_athlete_profile(connection)
+        profile = coach_profile(load_athlete_profile(connection), end)
         rows = load_activity_history(
             connection, history_start.isoformat(), end.isoformat(), HISTORY_LIMIT
         )
@@ -69,7 +69,7 @@ def build_context(today: date | None = None) -> dict[str, Any]:
 
     recent, older = split_history(rows, end)
     return {
-        "profile": profile or {"notes": None, "avoided_sports": []},
+        "profile": profile,
         "today": end.isoformat(),
         "today_weekday": WEEKDAYS[end.weekday()],
         "timezone": f"UTC+{_offset_hours()}",
@@ -78,6 +78,71 @@ def build_context(today: date | None = None) -> dict[str, Any]:
         "recent_activities": [_slim(row) for row in recent],
         "weekly_totals": weekly_summary(older),
     }
+
+
+def coach_profile(raw: dict[str, Any] | None, today: date) -> dict[str, Any]:
+    """Shape the stored profile for the model.
+
+    Bookkeeping stays out. Zone sports use the same names as a workout. Age is
+    computed for today so the model does not have to count birthdays.
+    """
+    raw = raw or {}
+    birth = raw.get("birth_date")
+    return {
+        "notes": raw.get("notes"),
+        "avoided_sports": list(raw.get("avoided_sports") or []),
+        "birth_date": birth,
+        "age_years": _age_years(birth, today),
+        "weight_kg": raw.get("weight_kg"),
+        "height_cm": raw.get("height_cm"),
+        "cycling_ftp": raw.get("cycling_ftp"),
+        "hr_zones": _zones_for_coach(raw.get("hr_zones")),
+        "power_zones": _zones_for_coach(raw.get("power_zones")),
+        "recorded_at": raw.get("recorded_at"),
+    }
+
+
+_ZONE_SPORTS = {
+    "DEFAULT": "default",
+    "RUNNING": "running",
+    "CYCLING": "cycling",
+    "SWIMMING": "swimming",
+    "LAP_SWIMMING": "swimming",
+    "STRENGTH_TRAINING": "strength_training",
+    "YOGA": "yoga",
+    "FITNESS_EQUIPMENT": "fitness_equipment",
+}
+
+
+def _zones_for_coach(zones: Any) -> list[dict[str, Any]]:
+    if not isinstance(zones, list):
+        return []
+    found = []
+    for zone in zones:
+        if not isinstance(zone, dict):
+            continue
+        sport = str(zone.get("sport") or "default")
+        item = {
+            "sport": _ZONE_SPORTS.get(sport, sport.lower()),
+            "floors": list(zone.get("floors") or []),
+        }
+        if zone.get("ceiling") is not None:
+            item["ceiling"] = zone["ceiling"]
+        found.append(item)
+    return found
+
+
+def _age_years(birth: Any, today: date) -> int | None:
+    if not isinstance(birth, str) or len(birth) < 10:
+        return None
+    try:
+        born = date.fromisoformat(birth[:10])
+    except ValueError:
+        return None
+    years = today.year - born.year
+    if (today.month, today.day) < (born.month, born.day):
+        years -= 1
+    return years if years >= 0 else None
 
 
 def _offset_hours() -> int:

@@ -327,6 +327,10 @@ class PromptTest(unittest.TestCase):
         # a measurement fault.
         flat = " ".join(SYSTEM_PROMPT.split())
         self.assertIn("A gap in the dates is a break in training", flat)
+        self.assertIn("profile.cycling_ftp", flat)
+        self.assertIn("profile.avoided_sports", flat)
+        self.assertIn("profile.hr_zones", flat)
+        self.assertIn("profile.power_zones", flat)
         self.assertIn("true reading of a real break", flat)
         self.assertNotIn("not a collapse in fitness", flat)
 
