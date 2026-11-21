@@ -1,6 +1,7 @@
 import unittest
 
 from app.profile_version import (
+    garmin_view,
     normalize_garmin,
     profile_hash,
     with_garmin_profile,
@@ -86,6 +87,18 @@ class ProfileVersionTest(unittest.TestCase):
 
     def test_an_unreadable_garmin_reply_is_not_a_profile(self) -> None:
         self.assertIsNone(normalize_garmin({"user_settings": ["nope"]}))
+
+    def test_a_note_only_row_has_no_garmin_view(self) -> None:
+        current = with_written_profile(None, "колено", [])
+        self.assertIsNone(garmin_view(current))
+
+    def test_garmin_view_keeps_the_stored_fields(self) -> None:
+        current = with_garmin_profile(None, normalize_garmin(_garmin()), "sha-1")
+        view = garmin_view(current)
+        self.assertEqual(view["birth_date"], "1988-04-02")
+        self.assertEqual(view["weight_kg"], 72.5)
+        self.assertEqual(view["cycling_ftp"], 250.0)
+        self.assertEqual(view["hr_zones"][0]["sport"], "RUNNING")
 
 
 class GarminProfileReadTest(unittest.TestCase):

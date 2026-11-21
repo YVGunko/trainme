@@ -461,6 +461,100 @@ tr.is-selected td {
   gap: 16px;
 }
 
+.garmin-profile {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #fff;
+}
+
+.garmin-profile summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 44px;
+  padding: 10px 14px;
+  cursor: pointer;
+  list-style: none;
+  font-weight: 650;
+}
+
+.garmin-profile summary::-webkit-details-marker {
+  display: none;
+}
+
+.garmin-profile summary::after {
+  content: "";
+  flex: 0 0 auto;
+  width: 8px;
+  height: 8px;
+  margin-right: 4px;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  transform: translateY(-2px) rotate(45deg);
+}
+
+.garmin-profile[open] summary::after {
+  transform: translateY(2px) rotate(-135deg);
+}
+
+.garmin-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: baseline;
+}
+
+.garmin-body {
+  display: grid;
+  gap: 12px;
+  padding: 0 14px 14px;
+}
+
+.garmin-body h4 {
+  margin: 0 0 6px;
+  font-size: 0.95rem;
+}
+
+.garmin-body p {
+  margin: 0;
+}
+
+.garmin-facts {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+}
+
+.garmin-facts div {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.garmin-facts dt {
+  color: var(--muted);
+}
+
+.garmin-facts dd {
+  margin: 0;
+  text-align: right;
+}
+
+.garmin-zones {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.garmin-zones li {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
 .profile-notes {
   width: 100%;
   border: 1px solid var(--line);

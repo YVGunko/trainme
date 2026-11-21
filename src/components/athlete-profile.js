@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { GarminProfile } from '@/components/garmin-profile';
 import { IconButton } from '@/components/icon-button';
 
 const SPORTS = [
@@ -16,6 +17,7 @@ export function AthleteProfile() {
   const [avoided, setAvoided] = useState([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [garmin, setGarmin] = useState(null);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
 
@@ -32,6 +34,7 @@ export function AthleteProfile() {
         }
         setNotes(data.result?.notes || '');
         setAvoided(Array.isArray(data.result?.avoided_sports) ? data.result.avoided_sports : []);
+        setGarmin(data.result?.garmin || null);
       } catch {
         if (active) setError('Профиль не загружен');
       } finally {
@@ -120,6 +123,7 @@ export function AthleteProfile() {
           </div>
         </fieldset>
       </form>
+      <GarminProfile garmin={garmin} />
       {message ? <p className="muted">{message}</p> : null}
       {error ? <p className="error">{error}</p> : null}
     </section>
