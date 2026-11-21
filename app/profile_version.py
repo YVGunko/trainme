@@ -24,6 +24,33 @@ _FIELDS = (
 )
 
 
+def garmin_view(snapshot: dict[str, Any] | None) -> dict[str, Any] | None:
+    """Return the Garmin fields for display, or None when none have been stored."""
+    if snapshot is None:
+        return None
+    view = {
+        "birth_date": snapshot.get("birth_date"),
+        "weight_kg": snapshot.get("weight_kg"),
+        "height_cm": snapshot.get("height_cm"),
+        "cycling_ftp": snapshot.get("cycling_ftp"),
+        "hr_zones": list(snapshot.get("hr_zones") or []),
+        "power_zones": list(snapshot.get("power_zones") or []),
+        "recorded_at": snapshot.get("recorded_at"),
+    }
+    if not any(
+        (
+            view["birth_date"],
+            view["weight_kg"],
+            view["height_cm"],
+            view["cycling_ftp"],
+            view["hr_zones"],
+            view["power_zones"],
+        )
+    ):
+        return None
+    return view
+
+
 def empty_profile() -> dict[str, Any]:
     return {
         "notes": None,

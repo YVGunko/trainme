@@ -7,7 +7,7 @@ from datetime import date, timedelta
 from typing import Any
 
 from app.profile import parse_profile
-from app.profile_version import with_written_profile
+from app.profile_version import garmin_view, with_written_profile
 from app.storage.crypto import EncryptionKeyMissing
 from app.storage.db import (
     DatabaseNotConfigured,
@@ -28,8 +28,14 @@ HISTORY_LIMIT = 300
 def read_profile() -> dict[str, Any]:
     with connect() as connection:
         ensure_schema(connection)
-        found = load_athlete_profile(connection)
-    return found or {"notes": None, "avoided_sports": []}
+        latest = load_latest_athlete_profile(connection)
+    if latest is None:
+        return {"notes": None, "avoided_sports": [], "garmin": None}
+    return {
+        "notes": latest["notes"],
+        "avoided_sports": latest["avoided_sports"],
+        "garmin": garmin_view(latest),
+    }
 
 
 def write_profile(body: Any) -> dict[str, Any]:
