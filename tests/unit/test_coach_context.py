@@ -29,7 +29,21 @@ class BuildContextTest(unittest.TestCase):
     def test_an_empty_database_still_builds_a_context(self) -> None:
         context = self._build()
         self.assertEqual(context["today"], "2026-11-18")
-        self.assertEqual(context["profile"], {"notes": None, "avoided_sports": []})
+        self.assertEqual(
+            context["profile"],
+            {
+                "notes": None,
+                "avoided_sports": [],
+                "birth_date": None,
+                "age_years": None,
+                "weight_kg": None,
+                "height_cm": None,
+                "cycling_ftp": None,
+                "hr_zones": [],
+                "power_zones": [],
+                "recorded_at": None,
+            },
+        )
         self.assertEqual(context["recent_activities"], [])
         self.assertEqual(context["weekly_totals"], [])
         self.assertEqual(context["recent_days"], [])
@@ -41,6 +55,30 @@ class BuildContextTest(unittest.TestCase):
         context = self._build(profile={"notes": "hamstring", "avoided_sports": ["running"]})
         self.assertEqual(list(context)[0], "profile")
         self.assertEqual(context["profile"]["notes"], "hamstring")
+        self.assertEqual(context["profile"]["age_years"], None)
+        self.assertEqual(context["profile"]["hr_zones"], [])
+
+    def test_garmin_profile_fields_reach_the_coach(self) -> None:
+        context = self._build(
+            profile={
+                "notes": "колено",
+                "avoided_sports": ["yoga"],
+                "birth_date": "1988-04-02",
+                "weight_kg": 72.5,
+                "height_cm": 181.0,
+                "cycling_ftp": 250.0,
+                "hr_zones": [{"sport": "RUNNING", "floors": [120, 140], "ceiling": 190}],
+                "power_zones": [{"sport": "CYCLING", "floors": [0, 140]}],
+                "recorded_at": "2026-11-21T04:50:00+00:00",
+                "content_hash": "ignored",
+            }
+        )
+        profile = context["profile"]
+        self.assertEqual(profile["age_years"], 38)
+        self.assertEqual(profile["cycling_ftp"], 250.0)
+        self.assertEqual(profile["hr_zones"], [{"sport": "running", "floors": [120, 140], "ceiling": 190}])
+        self.assertEqual(profile["power_zones"], [{"sport": "cycling", "floors": [0, 140]}])
+        self.assertNotIn("content_hash", profile)
 
     def test_history_and_days_are_passed_through_unchanged(self) -> None:
         history = [

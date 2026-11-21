@@ -39,6 +39,10 @@ class FingerprintTest(unittest.TestCase):
         changed = _context(profile={"notes": "колено", "avoided_sports": []})
         self.assertNotEqual(context_fingerprint(_context()), context_fingerprint(changed))
 
+    def test_a_changed_ftp_changes_it(self) -> None:
+        changed = _context(profile={"notes": None, "avoided_sports": [], "cycling_ftp": 260})
+        self.assertNotEqual(context_fingerprint(_context()), context_fingerprint(changed))
+
     def test_a_different_plan_start_changes_it(self) -> None:
         # A week starting tomorrow is a different question even with the same history.
         changed = _context(today="2026-11-20")
