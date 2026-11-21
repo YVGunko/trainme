@@ -404,6 +404,24 @@ tr.is-selected td {
   max-width: 220px;
 }
 
+.day-unloaded {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+}
+
+.day-unloaded p {
+  margin: 0;
+}
+
+.day-unloaded button {
+  flex-shrink: 0;
+  padding: 2px 10px;
+  font-size: 0.82rem;
+  line-height: 1.4;
+}
+
 .day-card textarea {
   width: 100%;
   min-height: 88px;

@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { dayLoadVisible, requestDayLoad } from '@/lib/day-load';
 import {
   emptyWellnessForm,
   formFromWellness,
@@ -16,6 +17,7 @@ export function DayCard({ onSaved }) {
   const [date, setDate] = useState('');
   const [loadedDate, setLoadedDate] = useState('');
   const [loading, setLoading] = useState(false);
+  const [importing, setImporting] = useState(false);
   const [saving, setSaving] = useState(false);
   const [garmin, setGarmin] = useState(undefined);
   const [form, setForm] = useState(emptyWellnessForm);
@@ -34,6 +36,7 @@ export function DayCard({ onSaved }) {
     const controller = new AbortController();
     let active = true;
     setLoading(true);
+    setImporting(false);
     setError('');
     setMessage('');
     setLoadedDate('');
@@ -67,6 +70,28 @@ export function DayCard({ onSaved }) {
       controller.abort();
     };
   }, [date]);
+
+  async function loadGarminDay() {
+    const target = date;
+    if (!target || importing || !dayLoadVisible(garmin)) return;
+    setImporting(true);
+    setError('');
+    setMessage('');
+    try {
+      const result = await requestDayLoad(target);
+      if (dateRef.current !== target) return;
+      if (!result.ok) {
+        setError(result.error);
+        return;
+      }
+      setGarmin(result.garmin);
+    } catch {
+      if (dateRef.current !== target) return;
+      setError('Could not load this day.');
+    } finally {
+      if (dateRef.current === target) setImporting(false);
+    }
+  }
 
   function setScore(field, value) {
     setForm((current) => ({ ...current, [field]: value }));
@@ -128,7 +153,14 @@ export function DayCard({ onSaved }) {
           <h3>Garmin</h3>
           {!date ? <p className="muted">Choose a date.</p> : null}
           {date && loading ? <p className="muted">Loading...</p> : null}
-          {date && !loading && !error && garmin === null ? <p>This day is not loaded.</p> : null}
+          {date && !loading && dayLoadVisible(garmin) ? (
+            <div className="day-unloaded">
+              <p>This day is not loaded.</p>
+              <button type="button" className="secondary" onClick={loadGarminDay} disabled={importing}>
+                Load
+              </button>
+            </div>
+          ) : null}
           {date && !loading && !error && garmin && lines.length === 0 ? (
             <p>No Garmin metrics for this day.</p>
           ) : null}
