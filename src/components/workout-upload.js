@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { FIT_REASONS, hasNumericWarning, warningTexts } from '@/lib/fit-reasons';
+import { IconButton } from '@/components/icon-button';
 
 const MAX_FILE_BYTES = 256 * 1024;
 
@@ -157,9 +158,12 @@ export function WorkoutUpload() {
           <input type="checkbox" checked={push} onChange={(event) => setPush(event.target.checked)} />
           Отправить на устройство
         </label>
-        <button type="submit" disabled={sending}>
-          {sending ? 'Отправка...' : 'Загрузить FIT'}
-        </button>
+        <IconButton
+          type="submit"
+          icon="upload"
+          label={sending ? 'Отправка FIT' : 'Загрузить FIT'}
+          busy={sending}
+        />
       </form>
       <div>
         <h3>Устройства Garmin</h3>
@@ -176,9 +180,12 @@ export function WorkoutUpload() {
             placeholder="Пусто — только чтение"
           />
         </label>
-        <button type="submit" disabled={probing}>
-          {probing ? 'Запрос...' : 'Проверить устройства'}
-        </button>
+        <IconButton
+          type="submit"
+          icon="search"
+          label={probing ? 'Проверка устройств' : 'Проверить устройства'}
+          busy={probing}
+        />
       </form>
       {message ? <p className="muted">{message}</p> : null}
       {warnings.length > 0 ? (

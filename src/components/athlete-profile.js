@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { IconButton } from '@/components/icon-button';
 
 const SPORTS = [
   { key: 'running', label: 'Бег' },
@@ -10,23 +11,11 @@ const SPORTS = [
   { key: 'mobility', label: 'Мобилити' },
 ];
 
-function isoDay(offsetDays = 0) {
-  const date = new Date();
-  date.setDate(date.getDate() + offsetDays);
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  return `${date.getFullYear()}-${month}-${day}`;
-}
-
 export function AthleteProfile() {
   const [notes, setNotes] = useState('');
   const [avoided, setAvoided] = useState([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [importing, setImporting] = useState(false);
-  const [previewing, setPreviewing] = useState(false);
-  const [context, setContext] = useState(null);
-  const [coverage, setCoverage] = useState(null);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
 
@@ -86,67 +75,28 @@ export function AthleteProfile() {
     }
   }
 
-  async function importYear() {
-    if (importing) return;
-    setImporting(true);
-    setError('');
-    setMessage('');
-    try {
-      const response = await fetch('/api/history', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ start: isoDay(-365), end: isoDay(0) }),
-      });
-      const data = await response.json();
-      if (!response.ok || !data.ok) {
-        setError(data.error || 'История не загружена');
-        return;
-      }
-      const result = data.result || {};
-      setMessage(
-        `История за ${result.start} — ${result.end}: сохранено ${result.stored_count ?? 0} тренировок из ${result.activity_count ?? 0}. Всего в базе ${result.history_total ?? 0}.`,
-      );
-    } catch {
-      setError('История не загружена');
-    } finally {
-      setImporting(false);
-    }
-  }
-
-  async function previewContext() {
-    if (previewing) return;
-    setPreviewing(true);
-    setError('');
-    setMessage('');
-    try {
-      const response = await fetch('/api/context');
-      const data = await response.json();
-      if (!response.ok || !data.ok) {
-        setError(data.error || 'Контекст не собран');
-        return;
-      }
-      setContext(data.result?.context || null);
-      setCoverage(data.result?.coverage || null);
-    } catch {
-      setError('Контекст не собран');
-    } finally {
-      setPreviewing(false);
-    }
-  }
-
   return (
     <section className="data-tools">
-      <div>
-        <h3>Профиль атлета</h3>
+      <form id="athlete-form" className="profile-form" onSubmit={save}>
+        <div className="section-head">
+          <h3>Профиль атлета</h3>
+          <IconButton
+            type="submit"
+            icon="save"
+            label={saving ? 'Сохранение профиля' : 'Сохранить профиль'}
+            busy={saving}
+            disabled={loading}
+          />
+        </div>
         <p className="muted">
           Постоянные особенности, которые тренер должен учитывать. Дневная заметка сюда не входит и модели не
           передаётся.
         </p>
-      </div>
-      <form onSubmit={save}>
         <label>
           Постоянные ограничения и особенности
           <textarea
+            className="profile-notes"
+            rows={8}
             value={notes}
             maxLength={4000}
             disabled={loading || saving}
@@ -169,33 +119,7 @@ export function AthleteProfile() {
             ))}
           </div>
         </fieldset>
-        <div className="toolbar">
-          <button type="submit" disabled={loading || saving}>
-            {saving ? 'Сохранение...' : 'Сохранить профиль'}
-          </button>
-          <button type="button" className="secondary" disabled={importing} onClick={importYear}>
-            {importing ? 'Загрузка...' : 'Загрузить историю за год'}
-          </button>
-          <button type="button" className="secondary" disabled={previewing} onClick={previewContext}>
-            {previewing ? 'Сбор...' : 'Показать контекст тренера'}
-          </button>
-        </div>
       </form>
-      {coverage ? (
-        <p className="muted">
-          Сырых тренировок: {coverage.raw_activity_count} (последние {coverage.raw_window_days} дней).
-          Недель в сводке: {coverage.week_count}
-          {coverage.weeks_first ? `, ${coverage.weeks_first} — ${coverage.weeks_last}` : ''}.
-          Детальных дней: {coverage.detail_day_count}. Дней wellness: {coverage.wellness_day_count}.
-          Профиль: {coverage.profile_has_notes ? 'заполнен' : 'пуст'}.
-        </p>
-      ) : null}
-      {context ? (
-        <details>
-          <summary>Контекст, который получит модель</summary>
-          <pre className="context-preview">{JSON.stringify(context, null, 2)}</pre>
-        </details>
-      ) : null}
       {message ? <p className="muted">{message}</p> : null}
       {error ? <p className="error">{error}</p> : null}
     </section>

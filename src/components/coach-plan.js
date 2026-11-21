@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import { IconButton } from '@/components/icon-button';
 
 const WEEKDAYS = ['Вс', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб'];
 
@@ -113,18 +114,20 @@ export function CoachPlan() {
         )}
       </div>
 
-      <div className="toolbar">
-        <button type="button" disabled={refreshing} onClick={() => refresh(false)}>
-          {refreshing ? 'Пересчёт...' : 'Пересмотреть план'}
-        </button>
-        <button
-          type="button"
-          className="secondary"
+      <div className="icon-row">
+        <IconButton
+          icon="refresh"
+          label={refreshing ? 'Пересчёт плана' : 'Пересмотреть план'}
+          busy={refreshing}
+          onClick={() => refresh(false)}
+        />
+        <IconButton
+          icon="rebuild"
+          variant="secondary"
+          label="Построить заново"
           disabled={refreshing}
           onClick={() => refresh(true)}
-        >
-          Построить заново
-        </button>
+        />
       </div>
 
       {plan?.recommendation?.reason ? (
@@ -158,14 +161,13 @@ export function CoachPlan() {
                       {sent ? (
                         <span className="muted">отправлено ({sent})</span>
                       ) : (
-                        <button
-                          type="button"
-                          className="secondary"
-                          disabled={Boolean(sending[key])}
+                        <IconButton
+                          icon="send"
+                          variant="secondary"
+                          label={sending[key] ? 'Отправка в Garmin' : 'В Garmin'}
+                          busy={Boolean(sending[key])}
                           onClick={() => sendToGarmin(key, day, workout)}
-                        >
-                          {sending[key] ? 'Отправка...' : 'В Garmin'}
-                        </button>
+                        />
                       )}
                     </div>
                     {workout.description ? <p className="muted">{workout.description}</p> : null}

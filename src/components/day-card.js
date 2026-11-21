@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { dayLoadVisible, requestDayLoad } from '@/lib/day-load';
+import { IconButton } from '@/components/icon-button';
 import {
   emptyWellnessForm,
   formFromWellness,
@@ -156,9 +157,13 @@ export function DayCard({ onSaved }) {
           {date && !loading && dayLoadVisible(garmin) ? (
             <div className="day-unloaded">
               <p>This day is not loaded.</p>
-              <button type="button" className="secondary" onClick={loadGarminDay} disabled={importing}>
-                Load
-              </button>
+              <IconButton
+                icon="download"
+                variant="secondary"
+                label={importing ? 'Загрузка дня' : 'Load'}
+                busy={importing}
+                onClick={loadGarminDay}
+              />
             </div>
           ) : null}
           {date && !loading && !error && garmin && lines.length === 0 ? (
@@ -221,9 +226,13 @@ export function DayCard({ onSaved }) {
         </div>
       </div>
       <div className="day-actions">
-        <button type="submit" disabled={!ready || saving}>
-          {saving ? 'Saving...' : 'Save'}
-        </button>
+        <IconButton
+          type="submit"
+          icon="save"
+          label={saving ? 'Saving...' : 'Save'}
+          busy={saving}
+          disabled={!ready}
+        />
         {message ? <p className="muted">{message}</p> : null}
         {error ? <p className="error">{error}</p> : null}
       </div>
