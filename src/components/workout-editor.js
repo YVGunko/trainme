@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { describeActivity } from '@/lib/activity-record';
 import { Drawer } from '@/components/drawer';
+import { IconButton } from '@/components/icon-button';
 
 export function WorkoutEditor({ activityId, onClose, onSaved }) {
   const [record, setRecord] = useState(null);
@@ -138,13 +139,23 @@ export function WorkoutEditor({ activityId, onClose, onSaved }) {
       title={heading}
       onClose={requestClose}
       footer={
-        <div className="drawer-actions">
-          <button className="secondary" type="button" onClick={parseWorkout} disabled={loading || parsing || saving}>
-            {parsing ? 'Parsing...' : 'Parse'}
-          </button>
-          <button type="submit" form="workout-form" disabled={loading || saving || parsing || !record}>
-            {saving ? 'Saving...' : 'Save'}
-          </button>
+        <div className="drawer-actions icon-row">
+          <IconButton
+            icon="parse"
+            variant="secondary"
+            label={parsing ? 'Parsing...' : 'Parse'}
+            busy={parsing}
+            disabled={loading || saving}
+            onClick={parseWorkout}
+          />
+          <IconButton
+            type="submit"
+            form="workout-form"
+            icon="save"
+            label={saving ? 'Saving...' : 'Save'}
+            busy={saving}
+            disabled={loading || parsing || !record}
+          />
         </div>
       }
     >
