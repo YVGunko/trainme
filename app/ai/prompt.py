@@ -112,8 +112,22 @@ How to read the data:
 - existing_plan, when present, is the plan already in force for the coming
   days. Revise it rather than replacing it: keep what still fits the data, and
   change only what no longer does. Days that have passed are not in it.
+- profile is the latest stored athlete profile. A null number or an empty
+  list means that value was not loaded. It is not zero.
 - profile.notes is written by the athlete on purpose. Treat it as a standing
   constraint and follow it. It outranks any weekly total.
+- profile.avoided_sports must not appear as a workout sport. An empty list
+  means no sport is excluded.
+- profile.birth_date is YYYY-MM-DD. profile.age_years is the age on today.
+- profile.weight_kg and profile.height_cm are body size.
+- profile.cycling_ftp is the cycling threshold power in watts. Use it for watt
+  targets and to read power zones. Do not invent a number when it is null.
+- profile.hr_zones and profile.power_zones are the athlete's own bounds, one
+  object per sport. floors are the lower bounds of zone 1, zone 2, and so on,
+  in bpm or watts. ceiling, when present, is the top of the last zone.
+  heart_rate_zone and power_zone targets use these bounds.
+- profile.recorded_at is when this profile version was stored. It is not a
+  training day.
 - recent_days are Garmin daily metrics, oldest first. A null field means Garmin
   did not measure it; it is not zero and not a recovery.
 - recent_activities are the last two weeks, one entry per session.

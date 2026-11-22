@@ -512,10 +512,21 @@ def load_latest_athlete_profile(connection: psycopg.Connection) -> dict[str, Any
 
 
 def load_athlete_profile(connection: psycopg.Connection) -> dict[str, Any] | None:
+    """Return the latest profile the coach can read, without storage bookkeeping."""
     latest = load_latest_athlete_profile(connection)
     if latest is None:
         return None
-    return {"notes": latest["notes"], "avoided_sports": latest["avoided_sports"]}
+    return {
+        "notes": latest["notes"],
+        "avoided_sports": latest["avoided_sports"],
+        "birth_date": latest["birth_date"],
+        "weight_kg": latest["weight_kg"],
+        "height_cm": latest["height_cm"],
+        "cycling_ftp": latest["cycling_ftp"],
+        "hr_zones": latest["hr_zones"],
+        "power_zones": latest["power_zones"],
+        "recorded_at": latest["recorded_at"],
+    }
 
 
 def insert_athlete_profile_version(
