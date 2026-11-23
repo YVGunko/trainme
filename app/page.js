@@ -17,13 +17,13 @@ export default async function HomePage() {
     user = await userFromToken(token);
   } catch {
     console.error('session lookup failed');
-    sessionError = 'Не удалось проверить вход';
+    sessionError = 'Could not check the session';
   }
 
   if (!user) {
     return (
       <main>
-        <h1>Тренировки</h1>
+        <h1>Training</h1>
         <LoginForm notice={sessionError} />
       </main>
     );
@@ -35,7 +35,7 @@ export default async function HomePage() {
     activities = await listActivities();
   } catch {
     console.error('activity list failed');
-    listError = 'Список не загрузился';
+    listError = 'The list did not load';
   }
 
   return (

@@ -1,15 +1,16 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { EnglishCheck } from '@/components/english-check';
 import { GarminProfile } from '@/components/garmin-profile';
 import { IconButton } from '@/components/icon-button';
 
 const SPORTS = [
-  { key: 'running', label: 'Бег' },
-  { key: 'cycling', label: 'Велосипед' },
-  { key: 'strength_training', label: 'Силовые' },
-  { key: 'yoga', label: 'Йога' },
-  { key: 'mobility', label: 'Мобилити' },
+  { key: 'running', label: 'Running' },
+  { key: 'cycling', label: 'Cycling' },
+  { key: 'strength_training', label: 'Strength' },
+  { key: 'yoga', label: 'Yoga' },
+  { key: 'mobility', label: 'Mobility' },
 ];
 
 export function AthleteProfile() {
@@ -29,14 +30,14 @@ export function AthleteProfile() {
         const data = await response.json();
         if (!active) return;
         if (!response.ok || !data.ok) {
-          setError(data.error || 'Профиль не загружен');
+          setError(data.error || 'The profile did not load');
           return;
         }
         setNotes(data.result?.notes || '');
         setAvoided(Array.isArray(data.result?.avoided_sports) ? data.result.avoided_sports : []);
         setGarmin(data.result?.garmin || null);
       } catch {
-        if (active) setError('Профиль не загружен');
+        if (active) setError('The profile did not load');
       } finally {
         if (active) setLoading(false);
       }
@@ -67,12 +68,12 @@ export function AthleteProfile() {
       });
       const data = await response.json();
       if (!response.ok || !data.ok) {
-        setError(data.error || 'Профиль не сохранён');
+        setError(data.error || 'The profile was not saved');
         return;
       }
-      setMessage('Профиль сохранён.');
+      setMessage('Profile saved.');
     } catch {
-      setError('Профиль не сохранён');
+      setError('The profile was not saved');
     } finally {
       setSaving(false);
     }
@@ -82,33 +83,38 @@ export function AthleteProfile() {
     <section className="data-tools">
       <form id="athlete-form" className="profile-form" onSubmit={save}>
         <div className="section-head">
-          <h3>Профиль атлета</h3>
+          <h3>Athlete profile</h3>
           <IconButton
             type="submit"
             icon="save"
-            label={saving ? 'Сохранение профиля' : 'Сохранить профиль'}
+            label={saving ? 'Saving profile' : 'Save profile'}
             busy={saving}
             disabled={loading}
           />
         </div>
         <p className="muted">
-          Постоянные особенности, которые тренер должен учитывать. Дневная заметка сюда не входит и модели не
-          передаётся.
+          Standing points the coach should follow. The daily note stays on the day and is not sent as this profile.
         </p>
-        <label>
-          Постоянные ограничения и особенности
+        <EnglishCheck
+          text={notes}
+          placement="inline"
+          label="Standing limits and notes"
+          fieldId="profile-notes"
+          onApply={setNotes}
+        >
           <textarea
+            id="profile-notes"
             className="profile-notes"
             rows={8}
             value={notes}
             maxLength={4000}
             disabled={loading || saving}
-            placeholder="Например: периодически тянет заднюю поверхность левого бедра, нужна эксцентрика. Резкие спринты переношу плохо."
+            placeholder="For example: the back of the left thigh tightens from time to time and needs eccentric work. I tolerate sharp sprints poorly."
             onChange={(event) => setNotes(event.target.value)}
           />
-        </label>
+        </EnglishCheck>
         <fieldset className="score" disabled={loading || saving}>
-          <legend>Исключить виды спорта</legend>
+          <legend>Exclude sports</legend>
           <div className="choices">
             {SPORTS.map((sport) => (
               <button

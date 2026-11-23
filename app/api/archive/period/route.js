@@ -15,7 +15,7 @@ export async function POST(request) {
     const end = typeof body?.end === 'string' ? body.end : '';
     if (!validPeriod(start, end)) {
       return Response.json(
-        { ok: false, error: 'Нужны две даты, конец не раньше начала, период не длиннее 14 дней' },
+        { ok: false, error: 'Need two dates, the end not before the start, and a period no longer than 14 days' },
         { status: 400 }
       );
     }
@@ -23,17 +23,17 @@ export async function POST(request) {
     return Response.json({ ok: true, result, queue });
   } catch (error) {
     if (error?.message === 'unauthorized') {
-      return Response.json({ ok: false, error: 'Нужно войти' }, { status: 401 });
+      return Response.json({ ok: false, error: 'Need to sign in' }, { status: 401 });
     }
     const status = error?.status || 500;
     const message =
       status === 400
-        ? 'Проверьте даты. Период не длиннее 14 дней'
+        ? 'Check the dates. The period is no longer than 14 days'
         : status === 401
-          ? 'Сервис загрузки не принял секрет'
+          ? 'The download service rejected the secret'
           : status === 503
-            ? 'Сервис загрузки не настроен'
-            : 'Загрузка не удалась. Подождите минуту и повторите';
+            ? 'The download service is not configured'
+            : 'Download failed. Wait a minute and try again';
     const httpStatus = status === 400 || status === 503 ? status : 502;
     return Response.json({ ok: false, error: message }, { status: httpStatus });
   }

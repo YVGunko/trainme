@@ -13,9 +13,9 @@ export async function GET(request) {
     return Response.json({ ok: true, result });
   } catch (error) {
     if (error?.message === 'unauthorized') {
-      return Response.json({ ok: false, error: 'Нужно войти' }, { status: 401 });
+      return Response.json({ ok: false, error: 'Need to sign in' }, { status: 401 });
     }
-    const failure = renderFailure(error, 'Профиль недоступен');
+    const failure = renderFailure(error, 'The profile is unavailable');
     return Response.json({ ok: false, error: failure.error }, { status: failure.status });
   }
 }
@@ -25,15 +25,15 @@ export async function POST(request) {
     await requireUser(request);
     const body = await request.json().catch(() => null);
     if (!body || typeof body !== 'object') {
-      return Response.json({ ok: false, error: 'Нужен профиль' }, { status: 400 });
+      return Response.json({ ok: false, error: 'A profile is required' }, { status: 400 });
     }
     const result = await callRender('/profile', body);
     return Response.json({ ok: true, result });
   } catch (error) {
     if (error?.message === 'unauthorized') {
-      return Response.json({ ok: false, error: 'Нужно войти' }, { status: 401 });
+      return Response.json({ ok: false, error: 'Need to sign in' }, { status: 401 });
     }
-    const failure = renderFailure(error, 'Профиль не сохранён');
+    const failure = renderFailure(error, 'The profile was not saved');
     return Response.json({ ok: false, error: failure.error }, { status: failure.status });
   }
 }

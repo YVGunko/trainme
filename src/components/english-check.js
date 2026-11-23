@@ -23,13 +23,13 @@ export function EnglishCheck({ text, onApply, placement = 'sheet', label, fieldI
       const data = await response.json();
       if (!response.ok || !data.ok) {
         setResult(null);
-        setError(data.error || 'Проверка не удалась');
+        setError(data.error || 'The check failed');
         return;
       }
       setResult({ ...data.result, source: text.trim() });
     } catch {
       setResult(null);
-      setError('Проверка не удалась');
+      setError('The check failed');
     } finally {
       setPending(false);
     }
@@ -64,7 +64,7 @@ export function EnglishCheck({ text, onApply, placement = 'sheet', label, fieldI
         <IconButton
           icon="spell"
           variant="secondary"
-          label={pending ? 'Проверка...' : 'Проверить английский'}
+          label={pending ? 'Checking...' : 'Check English'}
           busy={pending}
           disabled={empty}
           onClick={check}
@@ -74,8 +74,8 @@ export function EnglishCheck({ text, onApply, placement = 'sheet', label, fieldI
       {error ? <p className="error">{error}</p> : null}
       {placement === 'sheet' && result ? (
         <div className="english-layer">
-          <button type="button" className="english-backdrop" aria-label="Закрыть" onClick={close} />
-          <section className="english-sheet" role="dialog" aria-label="Проверка английского">
+          <button type="button" className="english-backdrop" aria-label="Close" onClick={close} />
+          <section className="english-sheet" role="dialog" aria-label="English check">
             {review}
           </section>
         </div>
@@ -89,22 +89,22 @@ function Review({ result, onApply, onClose }) {
   return (
     <>
       <div className="section-head">
-        <h3>Проверка английского</h3>
+        <h3>English check</h3>
         <div className="icon-row">
-          <IconButton icon="check" label="Подставить в поле" onClick={onApply} />
-          <IconButton icon="close" variant="secondary" label="Закрыть" onClick={onClose} />
+          <IconButton icon="check" label="Apply to field" onClick={onApply} />
+          <IconButton icon="close" variant="secondary" label="Close" onClick={onClose} />
         </div>
       </div>
       <div>
-        <h4>Ваш текст</h4>
+        <h4>Your text</h4>
         <p>{result.source || ''}</p>
       </div>
       <div>
-        <h4>Более ясная версия</h4>
+        <h4>Clearer version</h4>
         <p>{result.revision}</p>
       </div>
       <div>
-        <h4>На что обратить внимание</h4>
+        <h4>What to notice</h4>
         <ul className="english-tips">
           {(result.tips || []).map((tip) => (
             <li key={tip.aspect}>

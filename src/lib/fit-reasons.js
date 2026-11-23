@@ -6,14 +6,14 @@
 // so a FIT workout reaches Garmin as workout JSON, not as a file.
 export const FIT_REASONS = {
   activity_file:
-    'Это файл активности, а не тренировки. Garmin Connect не импортирует FIT-тренировки — только активности.',
-  other_file: 'Это FIT другого типа, не тренировка.',
-  no_workout_message: 'В файле нет сообщения тренировки.',
-  unreadable: 'Файл повреждён или это не FIT.',
-  empty: 'Файл пустой.',
-  too_large: 'Файл больше 256 КБ.',
-  missing: 'Файл не приложен.',
-  bad_base64: 'Файл не удалось прочитать.',
+    'This is an activity file, not a workout. Garmin Connect does not import FIT workouts, only activities.',
+  other_file: 'This FIT file is another type, not a workout.',
+  no_workout_message: 'The file has no workout message.',
+  unreadable: 'The file is damaged or it is not a FIT file.',
+  empty: 'The file is empty.',
+  too_large: 'The file is larger than 256 KB.',
+  missing: 'No file was attached.',
+  bad_base64: 'The file could not be read.',
 };
 
 export function fitReason(reason) {
@@ -22,25 +22,25 @@ export function fitReason(reason) {
 
 function seconds(value) {
   const rounded = Math.round(Number(value) * 10) / 10;
-  return `${rounded} с`;
+  return `${rounded} s`;
 }
 
 function meters(value) {
   const rounded = Math.round(Number(value) * 10) / 10;
-  return `${rounded} м`;
+  return `${rounded} m`;
 }
 
 // The server reports warnings as codes plus the values behind them, so the
-// sentence lives here and stays readable in Russian.
+// sentence lives here.
 const WARNING_SENTENCES = {
-  step_names_dropped: (w) => `Названия шагов не переносятся (${w.count}).`,
-  notes_dropped: (w) => `Заметки к шагам не переносятся (${w.count}).`,
+  step_names_dropped: (w) => `Step names are not carried over (${w.count}).`,
+  notes_dropped: (w) => `Step notes are not carried over (${w.count}).`,
   short_steps: (w) =>
-    `Похоже, в файле неверные единицы времени: ${w.count} шаг(ов) короче секунды, самый короткий ${seconds(w.smallest)}. Garmin примет это как тренировку на несколько секунд — проверьте файл.`,
+    `The file looks as if its time units are wrong: ${w.count} step(s) are shorter than a second, the shortest ${seconds(w.smallest)}. Garmin would accept this as a workout of a few seconds. Check the file.`,
   short_distance_steps: (w) =>
-    `Похоже, в файле неверные единицы расстояния: ${w.count} шаг(ов) короче метра, самый короткий ${meters(w.smallest)}.`,
+    `The file looks as if its distance units are wrong: ${w.count} step(s) are shorter than a metre, the shortest ${meters(w.smallest)}.`,
   short_workout: (w) =>
-    `Вся тренировка длится ${seconds(w.total_seconds)}. Для плановой тренировки это почти наверняка ошибка в файле.`,
+    `The whole workout lasts ${seconds(w.total_seconds)}. For a planned workout that is almost certainly an error in the file.`,
 };
 
 export function warningText(warning) {

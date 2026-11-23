@@ -3,7 +3,7 @@ export function AppHeader({ username, section = 'home' }) {
   return (
     <header className="top">
       <div>
-        <h1>{onData ? 'Data' : 'Тренировки'}</h1>
+        <h1>{onData ? 'Data' : 'Training'}</h1>
         <p className="muted">{username}</p>
       </div>
       <div className="top-actions">
@@ -12,7 +12,7 @@ export function AppHeader({ username, section = 'home' }) {
         </a>
         <form action="/api/auth/logout" method="post">
           <button className="secondary" type="submit">
-            Выйти
+            Sign out
           </button>
         </form>
       </div>

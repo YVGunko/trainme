@@ -16,7 +16,7 @@ export async function POST(request) {
     const end = typeof body?.end === 'string' ? body.end : '';
     if (!validPeriod(start, end)) {
       return Response.json(
-        { ok: false, error: 'Нужны две даты, конец не раньше начала, период не длиннее 400 дней' },
+        { ok: false, error: 'Need two dates, the end not before the start, and a period no longer than 400 days' },
         { status: 400 },
       );
     }
@@ -24,9 +24,9 @@ export async function POST(request) {
     return Response.json({ ok: true, result });
   } catch (error) {
     if (error?.message === 'unauthorized') {
-      return Response.json({ ok: false, error: 'Нужно войти' }, { status: 401 });
+      return Response.json({ ok: false, error: 'Need to sign in' }, { status: 401 });
     }
-    const failure = renderFailure(error, 'История не загружена');
+    const failure = renderFailure(error, 'History was not loaded');
     // A bad period is the athlete's typo, so keep it a 400.
     const status = failure.status === 502 && error?.status === 400 ? 400 : failure.status;
     return Response.json({ ok: false, error: failure.error }, { status });

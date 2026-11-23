@@ -45,7 +45,7 @@ export function formatDuration(seconds) {
 export function formatDistance(meters) {
   const value = numberOrNull(meters);
   if (value == null) return '—';
-  return `${(value / 1000).toFixed(2)} км`;
+  return `${(value / 1000).toFixed(2)} km`;
 }
 
 export function formatActivity(row) {

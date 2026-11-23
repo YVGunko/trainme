@@ -35,13 +35,13 @@ test('a failed archive does not read the day', async () => {
   const calls = [];
   const result = await requestDayLoad('2026-11-21', async (url) => {
     calls.push(url);
-    return json({ ok: false, error: 'Загрузка не удалась. Подождите минуту и повторите' }, 502);
+    return json({ ok: false, error: 'Download failed. Wait a minute and try again' }, 502);
   });
 
   assert.deepEqual(calls, ['/api/archive/period']);
   assert.deepEqual(result, {
     ok: false,
-    error: 'Загрузка не удалась. Подождите минуту и повторите',
+    error: 'Download failed. Wait a minute and try again',
   });
 });
 

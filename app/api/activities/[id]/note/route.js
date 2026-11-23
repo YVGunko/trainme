@@ -26,7 +26,7 @@ export async function POST(request, { params }) {
     await requireUser(request);
     const { id } = await params;
     if (!/^\d+$/.test(id)) {
-      return Response.json({ ok: false, error: 'Тренировка не найдена' }, { status: 404 });
+      return Response.json({ ok: false, error: 'Workout not found' }, { status: 404 });
     }
     const body = await request.json();
     const title = cleanText(body?.title, 200);
@@ -36,7 +36,7 @@ export async function POST(request, { params }) {
   } catch (error) {
     const status = error?.status === 401 ? 401 : error?.status === 400 ? 400 : 500;
     const message =
-      status === 401 ? 'Нужно войти' : status === 400 ? 'Текст слишком длинный' : 'Не удалось сохранить';
+      status === 401 ? 'Need to sign in' : status === 400 ? 'The text is too long' : 'Could not save';
     if (status === 500) console.error('note save failed');
     return Response.json({ ok: false, error: message }, { status });
   }

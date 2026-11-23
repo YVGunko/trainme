@@ -10,11 +10,11 @@ import {
 
 test('an activity file is explained as an activity, not a workout', () => {
   const text = fitReason('activity_file');
-  assert.match(text, /активности/);
-  assert.match(text, /не тренировки/);
+  assert.match(text, /activity file/);
+  assert.match(text, /not a workout/);
   // The user has to be told that Garmin has no workout import at all,
   // otherwise trying another FIT file looks like the right next step.
-  assert.match(text, /не импортирует FIT-тренировки/);
+  assert.match(text, /does not import FIT workouts/);
 });
 
 test('every known reason has its own sentence', () => {
@@ -33,15 +33,15 @@ test('an unknown reason gives an empty sentence instead of undefined', () => {
 test('a wrong-unit step is named with its real length', () => {
   const text = warningText({ code: 'short_steps', count: 16, smallest: 0.06 });
   assert.match(text, /16/);
-  assert.match(text, /0\.1 с/);
+  assert.match(text, /0\.1 s/);
   // The consequence is the point: Garmin would accept this as a real workout.
-  assert.match(text, /несколько секунд/);
+  assert.match(text, /a few seconds/);
 });
 
 test('a whole workout under a minute is named with its total', () => {
   const text = warningText({ code: 'short_workout', total_seconds: 4.2 });
-  assert.match(text, /4\.2 с/);
-  assert.match(text, /ошибка в файле/);
+  assert.match(text, /4\.2 s/);
+  assert.match(text, /error in the file/);
 });
 
 test('dropped step names are a plain note, not a value problem', () => {

@@ -51,7 +51,7 @@ test('keeps a custom title and falls back to the sport when Garmin has no name',
   });
   assert.equal(sport.title, 'cycling / indoor_cycling');
   assert.equal(sport.when, '2026-10-07 18:47');
-  assert.equal(sport.distance, '0.00 км');
+  assert.equal(sport.distance, '0.00 km');
 });
 
 test('keeps an uploaded file visible before it is parsed', () => {

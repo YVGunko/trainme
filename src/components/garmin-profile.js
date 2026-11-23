@@ -1,14 +1,14 @@
 'use client';
 
 const SPORT_LABELS = {
-  DEFAULT: 'Общие',
-  RUNNING: 'Бег',
-  CYCLING: 'Велосипед',
-  SWIMMING: 'Плавание',
-  LAP_SWIMMING: 'Плавание',
-  STRENGTH_TRAINING: 'Силовые',
-  YOGA: 'Йога',
-  FITNESS_EQUIPMENT: 'Тренажёры',
+  DEFAULT: 'General',
+  RUNNING: 'Running',
+  CYCLING: 'Cycling',
+  SWIMMING: 'Swimming',
+  LAP_SWIMMING: 'Swimming',
+  STRENGTH_TRAINING: 'Strength',
+  YOGA: 'Yoga',
+  FITNESS_EQUIPMENT: 'Gym equipment',
 };
 
 export function GarminProfile({ garmin }) {
@@ -17,12 +17,12 @@ export function GarminProfile({ garmin }) {
     <details className="garmin-profile">
       <summary>
         <span className="garmin-summary">
-          Профиль Garmin
-          <span className="muted">{loaded ? 'загружен' : 'ещё не загружен'}</span>
+          Garmin profile
+          <span className="muted">{loaded ? 'loaded' : 'not loaded yet'}</span>
         </span>
       </summary>
       <div className="garmin-body">
-        {loaded ? <GarminFacts garmin={garmin} /> : <p>Синхронизация ещё не принесла профиль Garmin.</p>}
+        {loaded ? <GarminFacts garmin={garmin} /> : <p>Sync has not brought a Garmin profile yet.</p>}
       </div>
     </details>
   );
@@ -31,9 +31,9 @@ export function GarminProfile({ garmin }) {
 function GarminFacts({ garmin }) {
   const facts = [
     birthFact(garmin.birth_date),
-    measure(garmin.weight_kg, 'кг', 'Вес'),
-    measure(garmin.height_cm, 'см', 'Рост'),
-    measure(garmin.cycling_ftp, 'Вт', 'Вело-FTP'),
+    measure(garmin.weight_kg, 'kg', 'Weight'),
+    measure(garmin.height_cm, 'cm', 'Height'),
+    measure(garmin.cycling_ftp, 'W', 'Cycling FTP'),
   ].filter(Boolean);
   return (
     <>
@@ -47,9 +47,9 @@ function GarminFacts({ garmin }) {
           ))}
         </dl>
       ) : null}
-      <ZoneList title="Пульсовые зоны" zones={garmin.hr_zones} />
-      <ZoneList title="Зоны мощности" zones={garmin.power_zones} />
-      {garmin.recorded_at ? <p className="muted">Снимок {formatWhen(garmin.recorded_at)}</p> : null}
+      <ZoneList title="Heart-rate zones" zones={garmin.hr_zones} />
+      <ZoneList title="Power zones" zones={garmin.power_zones} />
+      {garmin.recorded_at ? <p className="muted">Snapshot {formatWhen(garmin.recorded_at)}</p> : null}
     </>
   );
 }
@@ -75,7 +75,7 @@ function birthFact(iso) {
   if (!iso) return null;
   const age = ageYears(iso);
   const value = age == null ? shortDate(iso) : `${shortDate(iso)}, ${yearsLabel(age)}`;
-  return { label: 'Дата рождения', value };
+  return { label: 'Date of birth', value };
 }
 
 function measure(value, unit, label) {
@@ -89,7 +89,7 @@ function formatZone(zone) {
   const floors = Array.isArray(zone.floors) ? zone.floors.map(plainNumber).filter(Boolean) : [];
   const bounds = floors.join('–');
   if (zone.ceiling == null) return bounds;
-  return bounds ? `${bounds}, до ${plainNumber(zone.ceiling)}` : `до ${plainNumber(zone.ceiling)}`;
+  return bounds ? `${bounds}, up to ${plainNumber(zone.ceiling)}` : `up to ${plainNumber(zone.ceiling)}`;
 }
 
 function plainNumber(value) {
@@ -108,24 +108,20 @@ function ageYears(iso, now = new Date()) {
 }
 
 function yearsLabel(age) {
-  const mod10 = age % 10;
-  const mod100 = age % 100;
-  if (mod10 === 1 && mod100 !== 11) return `${age} год`;
-  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return `${age} года`;
-  return `${age} лет`;
+  return age === 1 ? '1 year' : `${age} years`;
 }
 
 function shortDate(iso) {
   const [year, month, day] = iso.split('-');
-  return `${day}.${month}.${year}`;
+  return `${day}/${month}/${year}`;
 }
 
 function formatWhen(value) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
-  return new Intl.DateTimeFormat('ru', {
+  return new Intl.DateTimeFormat('en-GB', {
     day: '2-digit',
-    month: '2-digit',
+    month: 'short',
     year: 'numeric',
     hour: '2-digit',
     minute: '2-digit',

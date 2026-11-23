@@ -19,7 +19,7 @@ export async function POST(request) {
     return Response.json({ ok: true, result });
   } catch (error) {
     if (error?.message === 'unauthorized') {
-      return Response.json({ ok: false, error: 'Нужно войти' }, { status: 401 });
+      return Response.json({ ok: false, error: 'Need to sign in' }, { status: 401 });
     }
     const status = error?.status || 500;
     const httpStatus = status === 429 ? 429 : status === 503 ? 503 : 502;
@@ -28,9 +28,9 @@ export async function POST(request) {
 }
 
 function messageFor(status, detail) {
-  if (status === 401) return 'Сервис не принял секрет';
-  if (status === 429) return 'Тренер ограничил запросы. Подождите и повторите';
-  if (status === 503) return 'Тренер не настроен: проверьте LLM_API_KEY';
-  if (typeof detail === 'string' && detail) return `Тренер не смог пересчитать план: ${detail}`;
-  return 'Тренер не смог пересчитать план. Подождите минуту и повторите';
+  if (status === 401) return 'The service rejected the secret';
+  if (status === 429) return 'The coach limited the requests. Wait and try again';
+  if (status === 503) return 'The coach is not configured: check LLM_API_KEY';
+  if (typeof detail === 'string' && detail) return `The coach could not revise the plan: ${detail}`;
+  return 'The coach could not revise the plan. Wait a minute and try again';
 }

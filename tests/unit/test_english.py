@@ -37,7 +37,8 @@ class ReviewEnglishTest(unittest.TestCase):
                 review_english("Fine.")
         self.assertEqual(caught.exception.reason, "bad_answer")
 
-    def test_the_prompt_keeps_the_lesson_in_russian_and_the_text_in_english(self) -> None:
-        self.assertIn("Write revision in English", SYSTEM_PROMPT)
-        self.assertIn("Write aspect and note in Russian", SYSTEM_PROMPT)
+    def test_the_prompt_asks_for_british_english(self) -> None:
+        self.assertIn("British English", SYSTEM_PROMPT)
+        self.assertIn("programme", SYSTEM_PROMPT)
+        self.assertNotIn("Russian", SYSTEM_PROMPT)
         self.assertIn("Do not add training advice", SYSTEM_PROMPT)

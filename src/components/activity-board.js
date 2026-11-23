@@ -4,13 +4,13 @@ import { useMemo, useState } from 'react';
 import { filterActivities, pageNumbers, pageOf, sortActivities, sortLabel, toggleSort } from '@/lib/table';
 
 const COLUMNS = [
-  { id: 'when', label: 'Дата' },
-  { id: 'title', label: 'Название' },
-  { id: 'description', label: 'Описание' },
-  { id: 'sport', label: 'Тип' },
-  { id: 'duration', label: 'Длительность' },
-  { id: 'distance', label: 'Дистанция' },
-  { id: 'parsed', label: 'Разбор' },
+  { id: 'when', label: 'Date' },
+  { id: 'title', label: 'Title' },
+  { id: 'description', label: 'Description' },
+  { id: 'sport', label: 'Type' },
+  { id: 'duration', label: 'Duration' },
+  { id: 'distance', label: 'Distance' },
+  { id: 'parsed', label: 'Parsed' },
 ];
 
 export function ActivityBoard({ activities, editingId, onEdit }) {
@@ -27,7 +27,7 @@ export function ActivityBoard({ activities, editingId, onEdit }) {
   return (
     <section>
       <label className="search">
-        Поиск по названию и описанию
+        Search by title and description
         <input
           value={query}
           onChange={(event) => {
@@ -38,10 +38,10 @@ export function ActivityBoard({ activities, editingId, onEdit }) {
         />
       </label>
       <p className="muted sort-note" aria-live="polite">
-        Сортировка: {sortLabel(sorting)}. Обычный щелчок выбирает одну колонку, Shift добавляет следующую.
+        Sort: {sortLabel(sorting)}. A click chooses one column. Shift adds the next.
       </p>
-      {activities.length === 0 ? <p>Пока нет загруженных тренировок.</p> : null}
-      {activities.length > 0 && visible.length === 0 ? <p>Ничего не найдено.</p> : null}
+      {activities.length === 0 ? <p>No loaded activities yet.</p> : null}
+      {activities.length > 0 && visible.length === 0 ? <p>Nothing found.</p> : null}
       {visible.length > 0 ? (
         <>
           <div className="table-wrap">
@@ -70,7 +70,7 @@ export function ActivityBoard({ activities, editingId, onEdit }) {
                       </th>
                     );
                   })}
-                  <th>Действие</th>
+                  <th>Action</th>
                 </tr>
               </thead>
               <tbody>
@@ -85,7 +85,7 @@ export function ActivityBoard({ activities, editingId, onEdit }) {
                     <td>{row.sport}</td>
                     <td>{row.duration}</td>
                     <td>{row.distance}</td>
-                    <td>{row.parsed ? 'да' : 'нет'}</td>
+                    <td>{row.parsed ? 'yes' : 'no'}</td>
                     <td>
                       <button className="secondary" type="button" onClick={() => onEdit(row.garminActivityId)}>
                         Edit

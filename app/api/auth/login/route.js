@@ -12,10 +12,10 @@ export async function POST(request) {
     const password = typeof body?.password === 'string' ? body.password : '';
 
     if (!username || !password) {
-      return Response.json({ ok: false, error: 'Нужны логин и пароль' }, { status: 400 });
+      return Response.json({ ok: false, error: 'A username and a password are required' }, { status: 400 });
     }
     if (username.length > 100 || password.length > 1024) {
-      return Response.json({ ok: false, error: 'Неверный логин или пароль' }, { status: 401 });
+      return Response.json({ ok: false, error: 'Wrong username or password' }, { status: 401 });
     }
 
     await ensureLoginUser();
@@ -25,7 +25,7 @@ export async function POST(request) {
     });
 
     if (!user || !user.is_active || !verifyPasswordHash(password, user.password_hash)) {
-      return Response.json({ ok: false, error: 'Неверный логин или пароль' }, { status: 401 });
+      return Response.json({ ok: false, error: 'Wrong username or password' }, { status: 401 });
     }
 
     return Response.json(
@@ -36,7 +36,7 @@ export async function POST(request) {
     const status = error?.status === 503 ? 503 : 500;
     console.error(status === 503 ? 'login is not configured' : 'login failed');
     return Response.json(
-      { ok: false, error: status === 503 ? 'Вход не настроен' : 'Вход не удался' },
+      { ok: false, error: status === 503 ? 'Sign-in is not configured' : 'Sign-in failed' },
       { status }
     );
   }

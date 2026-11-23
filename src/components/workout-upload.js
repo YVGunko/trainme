@@ -29,12 +29,12 @@ export function WorkoutUpload() {
       const response = await fetch('/api/workouts/devices', { method: 'POST' });
       const data = await response.json();
       if (!response.ok || !data.ok) {
-        setError(data.error || 'Список устройств не получен');
+        setError(data.error || 'The device list was not received');
         return;
       }
       setDevices(Array.isArray(data.result?.devices) ? data.result.devices : []);
     } catch {
-      setError('Список устройств не получен');
+      setError('The device list was not received');
     } finally {
       setLoadingDevices(false);
     }
@@ -56,16 +56,16 @@ export function WorkoutUpload() {
       });
       const data = await response.json();
       if (!response.ok || !data.ok) {
-        setError(data.error || 'Проверка устройств не удалась');
+        setError(data.error || 'The device check failed');
         return;
       }
       saveReport('workout-device', data.result);
       const chosen = Object.entries(data.result?.sport_device || {})
         .map(([sport, entry]) => `${sport} → ${entry.payload?.device_id ?? entry.error}`)
         .join(', ');
-      setMessage(`Отчёт сохранён в загрузки браузера. ${chosen}`);
+      setMessage(`The report was saved to the browser downloads. ${chosen}`);
     } catch {
-      setError('Проверка устройств не удалась');
+      setError('The device check failed');
     } finally {
       setProbing(false);
     }
@@ -78,11 +78,11 @@ export function WorkoutUpload() {
     setWarnings([]);
     setWarningIsNumeric(false);
     if (!file) {
-      setError('Выберите файл FIT');
+      setError('Choose a FIT file');
       return;
     }
     if (file.size > MAX_FILE_BYTES) {
-      setError('Файл больше 256 КБ');
+      setError('The file is larger than 256 KB');
       return;
     }
     setSending(true);
@@ -98,14 +98,14 @@ export function WorkoutUpload() {
       });
       const data = await response.json();
       if (!response.ok || !data.ok) {
-        setError(FIT_REASONS[data?.reason] || data.error || 'Загрузка не удалась');
+        setError(FIT_REASONS[data?.reason] || data.error || 'Upload failed');
         return;
       }
       const result = data.result || {};
       const parts = [
-        result.stored ? `Шаблон ${result.workout_id} создан` : `Шаблон ${result.workout_id} уже был загружен`,
-        result.date ? `поставлен на ${result.date}` : '',
-        result.pushed ? `отправлен на устройство ${result.device_id}` : '',
+        result.stored ? `Workout ${result.workout_id} created` : `Workout ${result.workout_id} was already uploaded`,
+        result.date ? `scheduled for ${result.date}` : '',
+        result.pushed ? `sent to device ${result.device_id}` : '',
       ];
       setMessage(parts.filter(Boolean).join(', '));
       // The file's own problems are shown apart from the result, because the
@@ -113,7 +113,7 @@ export function WorkoutUpload() {
       setWarnings(warningTexts(result.warnings));
       setWarningIsNumeric(hasNumericWarning(result.warnings));
     } catch {
-      setError('Загрузка не удалась');
+      setError('Upload failed');
     } finally {
       setSending(false);
     }
@@ -122,12 +122,12 @@ export function WorkoutUpload() {
   return (
     <section className="data-tools">
       <div>
-        <h3>Тренировка из файла FIT</h3>
-        <p className="muted">Файл проходит проверку перед отправкой в Garmin.</p>
+        <h3>Workout from a FIT file</h3>
+        <p className="muted">The file is checked before it is sent to Garmin.</p>
       </div>
       <form className="toolbar" onSubmit={send}>
         <label>
-          Файл FIT
+          FIT file
           <input
             type="file"
             accept=".fit,application/octet-stream"
@@ -135,55 +135,55 @@ export function WorkoutUpload() {
           />
         </label>
         <label>
-          Дата
+          Date
           <input type="date" value={date} onChange={(event) => setDate(event.target.value)} />
         </label>
         <label>
-          Устройство
+          Device
           <select
             value={deviceId}
             onChange={(event) => setDeviceId(event.target.value)}
             onFocus={loadDevices}
           >
-            <option value="">{loadingDevices ? 'Загрузка...' : 'По виду тренировки'}</option>
+            <option value="">{loadingDevices ? 'Loading...' : 'By workout type'}</option>
             {devices.map((device) => (
               <option key={device.device_id} value={device.device_id}>
                 {device.name || device.device_id}
-                {device.primary ? ' (основное)' : ''}
+                {device.primary ? ' (primary)' : ''}
               </option>
             ))}
           </select>
         </label>
         <label>
           <input type="checkbox" checked={push} onChange={(event) => setPush(event.target.checked)} />
-          Отправить на устройство
+          Send to the device
         </label>
         <IconButton
           type="submit"
           icon="upload"
-          label={sending ? 'Отправка FIT' : 'Загрузить FIT'}
+          label={sending ? 'Sending FIT' : 'Upload FIT'}
           busy={sending}
         />
       </form>
       <div>
-        <h3>Устройства Garmin</h3>
+        <h3>Garmin devices</h3>
         <p className="muted">
-          Пустой номер читает устройства и выбор по виду спорта. Номер тренировки ещё и разбирает FIT от Garmin.
+          An empty id reads the devices and the choice by sport. A workout id also parses the FIT from Garmin.
         </p>
       </div>
       <form className="toolbar" onSubmit={probe}>
         <label>
-          Номер тренировки
+          Workout id
           <input
             value={probeId}
             onChange={(event) => setProbeId(event.target.value)}
-            placeholder="Пусто — только чтение"
+            placeholder="Empty — read only"
           />
         </label>
         <IconButton
           type="submit"
           icon="search"
-          label={probing ? 'Проверка устройств' : 'Проверить устройства'}
+          label={probing ? 'Checking devices' : 'Check devices'}
           busy={probing}
         />
       </form>

@@ -18,7 +18,7 @@ export async function GET(request) {
     return Response.json({ ok: true, result });
   } catch (error) {
     if (error?.message === 'unauthorized') {
-      return Response.json({ ok: false, error: 'Нужно войти' }, { status: 401 });
+      return Response.json({ ok: false, error: 'Need to sign in' }, { status: 401 });
     }
     const status = error?.status || 500;
     const httpStatus = status === 429 ? 429 : status === 503 ? 503 : 502;
@@ -27,8 +27,8 @@ export async function GET(request) {
 }
 
 function messageFor(status) {
-  if (status === 401) return 'Сервис не принял секрет';
-  if (status === 429) return 'Garmin ограничил запросы. Подождите и повторите';
-  if (status === 503) return 'Тренер не настроен: проверьте LLM_API_KEY';
-  return 'План не получен. Подождите минуту и повторите';
+  if (status === 401) return 'The service rejected the secret';
+  if (status === 429) return 'Garmin limited the requests. Wait and try again';
+  if (status === 503) return 'The coach is not configured: check LLM_API_KEY';
+  return 'The plan was not received. Wait a minute and try again';
 }

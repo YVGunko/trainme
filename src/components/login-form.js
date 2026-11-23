@@ -20,12 +20,12 @@ export function LoginForm({ notice = '' }) {
       });
       const data = await response.json();
       if (!response.ok || !data.ok) {
-        setError(data.error || 'Вход не удался');
+        setError(data.error || 'Sign-in failed');
         return;
       }
       window.location.assign('/');
     } catch {
-      setError('Вход не удался');
+      setError('Sign-in failed');
     } finally {
       setPending(false);
     }
@@ -34,7 +34,7 @@ export function LoginForm({ notice = '' }) {
   return (
     <form className="card" onSubmit={onSubmit}>
       <label>
-        Логин
+        Username
         <input
           name="username"
           type="text"
@@ -44,7 +44,7 @@ export function LoginForm({ notice = '' }) {
         />
       </label>
       <label>
-        Пароль
+        Password
         <input
           name="password"
           type="password"
@@ -55,7 +55,7 @@ export function LoginForm({ notice = '' }) {
       </label>
       {error ? <p className="error">{error}</p> : null}
       <button type="submit" disabled={pending}>
-        {pending ? 'Вход...' : 'Войти'}
+        {pending ? 'Signing in...' : 'Sign in'}
       </button>
     </form>
   );

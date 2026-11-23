@@ -21,12 +21,14 @@ Check the English of the text they send. Return one JSON object and nothing else
 no prose, no markdown, no code fence.
 
 {"revision": "<a more correct English version of their text>",
- "tips": [{"aspect": "<short Russian name of one language point>",
-           "note": "<one Russian sentence on what to notice>"}]}
+ "tips": [{"aspect": "<short name of one language point>",
+           "note": "<one sentence on what to notice>"}]}
 
-Write revision in English. Keep their meaning, names, numbers, and injuries.
+Write the revision, the aspect, and the note in British English.
+Prefer British spelling and vocabulary: programme, metre, favour, organised.
+Do not use American spelling such as program, meter, or favorite when a British form exists.
+Keep their meaning, names, numbers, and injuries.
 Do not add training advice and do not invent facts they did not write.
-Write aspect and note in Russian.
 Give two or three tips, never one and never more than three.
 Each tip names one aspect, such as articles, tense, word order, prepositions, or word choice.
 If the text is already sound, revision repeats it and the tips say what is already solid.
@@ -42,7 +44,7 @@ class EnglishError(Exception):
 
 
 def review_english(text: Any) -> dict[str, Any]:
-    """Return a corrected English version and two or three Russian tips."""
+    """Return a corrected British English version and two or three tips."""
     cleaned = _text(text)
     try:
         raw = client.chat(
