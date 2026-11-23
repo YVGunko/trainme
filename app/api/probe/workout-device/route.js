@@ -13,7 +13,7 @@ export async function POST(request) {
     const pushId = optionalId(body?.push_workout_id);
     const downloadId = optionalId(body?.download_workout_id);
     if (pushId === false || downloadId === false) {
-      return Response.json({ ok: false, error: 'Номер тренировки должен быть положительным' }, { status: 400 });
+      return Response.json({ ok: false, error: 'The workout id must be a positive number' }, { status: 400 });
     }
     if (pushId) payload.push_workout_id = pushId;
     if (downloadId) payload.download_workout_id = downloadId;
@@ -21,7 +21,7 @@ export async function POST(request) {
     return Response.json({ ok: true, result });
   } catch (error) {
     if (error?.message === 'unauthorized') {
-      return Response.json({ ok: false, error: 'Нужно войти' }, { status: 401 });
+      return Response.json({ ok: false, error: 'Need to sign in' }, { status: 401 });
     }
     const status = error?.status || 500;
     const httpStatus = status === 400 || status === 503 ? status : status === 429 ? 429 : 502;
@@ -37,9 +37,9 @@ function optionalId(value) {
 }
 
 function renderMessage(status) {
-  if (status === 400) return 'Номер тренировки должен быть положительным';
-  if (status === 401) return 'Сервис проверки не принял секрет';
-  if (status === 429) return 'Garmin ограничил запросы. Подождите и повторите';
-  if (status === 503) return 'Сервис проверки не настроен';
-  return 'Проверка устройств Garmin не удалась. Подождите минуту и повторите';
+  if (status === 400) return 'The workout id must be a positive number';
+  if (status === 401) return 'The check service rejected the secret';
+  if (status === 429) return 'Garmin limited the requests. Wait and try again';
+  if (status === 503) return 'The check service is not configured';
+  return 'The Garmin device check failed. Wait a minute and try again';
 }

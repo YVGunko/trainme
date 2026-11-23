@@ -10,13 +10,13 @@ export async function POST(request, { params }) {
     await requireUser(request);
     const { id } = await params;
     if (!/^\d+$/.test(id)) {
-      return Response.json({ ok: false, error: 'Тренировка не найдена' }, { status: 404 });
+      return Response.json({ ok: false, error: 'Workout not found' }, { status: 404 });
     }
     await callRender('/normalize', { garmin_activity_id: id });
     return Response.json({ ok: true });
   } catch (error) {
     if (error?.message === 'unauthorized') {
-      return Response.json({ ok: false, error: 'Нужно войти' }, { status: 401 });
+      return Response.json({ ok: false, error: 'Need to sign in' }, { status: 401 });
     }
     const status = error?.status || 500;
     const httpStatus = status === 404 ? 404 : status === 503 ? 503 : 502;
@@ -25,8 +25,8 @@ export async function POST(request, { params }) {
 }
 
 function renderMessage(status) {
-  if (status === 401) return 'Сервис разбора не принял секрет';
-  if (status === 503) return 'Сервис разбора не настроен';
-  if (status === 404) return 'Файл тренировки ещё не загружен';
-  return 'Разбор не удался. Подождите минуту и повторите';
+  if (status === 401) return 'The parse service rejected the secret';
+  if (status === 503) return 'The parse service is not configured';
+  if (status === 404) return 'The workout file is not downloaded yet';
+  return 'Parsing failed. Wait a minute and try again';
 }

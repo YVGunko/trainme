@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { IconButton } from '@/components/icon-button';
 
-const WEEKDAYS = ['Вс', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб'];
+const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
 function weekdayOf(iso) {
   const date = new Date(`${iso}T00:00:00Z`);
@@ -12,7 +12,7 @@ function weekdayOf(iso) {
 
 function shortDate(iso) {
   const parts = iso.split('-');
-  return parts.length === 3 ? `${parts[2]}.${parts[1]}` : iso;
+  return parts.length === 3 ? `${parts[2]}/${parts[1]}` : iso;
 }
 
 export function CoachPlan() {
@@ -31,14 +31,14 @@ export function CoachPlan() {
       const data = await response.json();
       if (!response.ok || !data.ok) {
         // No plan yet is not an error worth shouting about.
-        if (data?.error && !/План не получен/.test(data.error)) setError(data.error);
+        if (data?.error && !/plan was not received/i.test(data.error)) setError(data.error);
         setPlan(null);
         return;
       }
       setPlan(data.result || null);
       setError('');
     } catch {
-      setError('План не загрузился');
+      setError('The plan did not load');
     } finally {
       setLoading(false);
     }
@@ -61,13 +61,13 @@ export function CoachPlan() {
       });
       const data = await response.json();
       if (!response.ok || !data.ok) {
-        setError(data.error || 'Тренер не смог пересчитать план');
+        setError(data.error || 'The coach could not revise the plan');
         return;
       }
       setPlan(data.result || null);
-      setMessage(regenerate ? 'Тренер построил план заново.' : 'Тренер пересмотрел план.');
+      setMessage(regenerate ? 'The coach built the plan again.' : 'The coach revised the plan.');
     } catch {
-      setError('Тренер не смог пересчитать план');
+      setError('The coach could not revise the plan');
     } finally {
       setRefreshing(false);
     }
@@ -85,31 +85,31 @@ export function CoachPlan() {
       });
       const data = await response.json();
       if (!response.ok || !data.ok) {
-        setSendErrors((current) => ({ ...current, [key]: data.error || 'Не отправлено' }));
+        setSendErrors((current) => ({ ...current, [key]: data.error || 'Not sent' }));
         return;
       }
       const result = data.result || {};
-      setSentDays((current) => ({ ...current, [key]: `шаблон ${result.workout_id}` }));
+      setSentDays((current) => ({ ...current, [key]: `workout ${result.workout_id}` }));
     } catch {
-      setSendErrors((current) => ({ ...current, [key]: 'Не отправлено' }));
+      setSendErrors((current) => ({ ...current, [key]: 'Not sent' }));
     } finally {
       setSending((current) => ({ ...current, [key]: false }));
     }
   }
 
-  if (loading) return <p className="muted">План загружается...</p>;
+  if (loading) return <p className="muted">The plan is loading...</p>;
 
   return (
     <section className="data-tools">
       <div>
-        <h2>План тренера</h2>
+        <h2>Coach's plan</h2>
         {plan?.recommendation ? (
           <p className="muted">
-            {plan.recommendation.summary} Уверенность {Math.round((plan.recommendation.confidence || 0) * 100)}%.
+            {plan.recommendation.summary} Confidence {Math.round((plan.recommendation.confidence || 0) * 100)}%.
           </p>
         ) : (
           <p className="muted">
-            Плана пока нет. Крон строит его дважды в день, либо постройте сейчас.
+            No plan yet. The schedule builds one twice a day, or build one now.
           </p>
         )}
       </div>
@@ -117,14 +117,14 @@ export function CoachPlan() {
       <div className="icon-row">
         <IconButton
           icon="refresh"
-          label={refreshing ? 'Пересчёт плана' : 'Пересмотреть план'}
+          label={refreshing ? 'Revising plan' : 'Revise plan'}
           busy={refreshing}
           onClick={() => refresh(false)}
         />
         <IconButton
           icon="rebuild"
           variant="secondary"
-          label="Построить заново"
+          label="Build again"
           disabled={refreshing}
           onClick={() => refresh(true)}
         />
@@ -132,7 +132,7 @@ export function CoachPlan() {
 
       {plan?.recommendation?.reason ? (
         <details>
-          <summary>Почему так</summary>
+          <summary>Why</summary>
           <p className="muted">{plan.recommendation.reason}</p>
         </details>
       ) : null}
@@ -145,7 +145,7 @@ export function CoachPlan() {
                 <strong>
                   {weekdayOf(day.date)} {shortDate(day.date)}
                 </strong>
-                {day.kind === 'rest' ? <span className="muted">отдых</span> : null}
+                {day.kind === 'rest' ? <span className="muted">rest</span> : null}
               </div>
               {day.reason ? <p className="muted">{day.reason}</p> : null}
               {(day.workouts || []).map((workout, index) => {
@@ -159,12 +159,12 @@ export function CoachPlan() {
                         <span className="muted"> {workout.sport}</span>
                       </div>
                       {sent ? (
-                        <span className="muted">отправлено ({sent})</span>
+                        <span className="muted">sent ({sent})</span>
                       ) : (
                         <IconButton
                           icon="send"
                           variant="secondary"
-                          label={sending[key] ? 'Отправка в Garmin' : 'В Garmin'}
+                          label={sending[key] ? 'Sending to Garmin' : 'To Garmin'}
                           busy={Boolean(sending[key])}
                           onClick={() => sendToGarmin(key, day, workout)}
                         />
@@ -192,7 +192,7 @@ export function CoachPlan() {
 
       {plan?.unmatched_exercises?.length ? (
         <p className="muted">
-          Не нашлись в каталоге Garmin и пропущены: {plan.unmatched_exercises.join(', ')}.
+          Missing from the Garmin catalogue and skipped: {plan.unmatched_exercises.join(', ')}.
         </p>
       ) : null}
       {message ? <p className="muted">{message}</p> : null}
@@ -204,7 +204,7 @@ export function CoachPlan() {
 function describeStep(step) {
   const end = step.end || {};
   const exercise = step.exercise ? ` ${step.exercise}` : '';
-  const weight = step.weight_kg ? ` ${step.weight_kg} кг` : '';
+  const weight = step.weight_kg ? ` ${step.weight_kg} kg` : '';
   const kind = step.kind || '';
   return `${kind}${exercise}${weight} ${describeEnd(end)}`.replace(/\s+/g, ' ').trim();
 }
@@ -212,16 +212,16 @@ function describeStep(step) {
 function describeEnd(end) {
   if (end.type === 'time') {
     const seconds = Number(end.seconds) || 0;
-    // A 30 second hold must not read as "0 мин".
-    const length = seconds < 60 ? `${Math.round(seconds)} с` : `${Math.round(seconds / 60)} мин`;
+    // A 30 second hold must not read as "0 min".
+    const length = seconds < 60 ? `${Math.round(seconds)} s` : `${Math.round(seconds / 60)} min`;
     return length;
   }
   if (end.type === 'distance') {
     const metres = Number(end.meters) || 0;
-    return metres < 1000 ? `${Math.round(metres)} м` : `${Math.round(metres / 100) / 10} км`;
+    return metres < 1000 ? `${Math.round(metres)} m` : `${Math.round(metres / 100) / 10} km`;
   }
   if (end.type === 'reps') {
-    return `${end.count || 0} повт`;
+    return `${end.count || 0} reps`;
   }
   return end.type || '';
 }

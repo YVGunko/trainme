@@ -13,9 +13,9 @@ export async function GET(request) {
     return Response.json({ ok: true, result });
   } catch (error) {
     if (error?.message === 'unauthorized') {
-      return Response.json({ ok: false, error: 'Нужно войти' }, { status: 401 });
+      return Response.json({ ok: false, error: 'Need to sign in' }, { status: 401 });
     }
-    const failure = renderFailure(error, 'Контекст недоступен');
+    const failure = renderFailure(error, 'The context is unavailable');
     return Response.json({ ok: false, error: failure.error }, { status: failure.status });
   }
 }

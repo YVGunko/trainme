@@ -53,8 +53,8 @@ h1 {
   margin-bottom: 20px;
 }
 
-/* The title is one long Russian word, so it sets its own min-content width and
-   can push the action buttons off the screen unless it is allowed to shrink. */
+/* A long title sets its own min-content width and can push the actions off
+   the screen unless it is allowed to shrink. */
 .top > div {
   min-width: 0;
 }

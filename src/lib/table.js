@@ -67,18 +67,18 @@ export function sortActivities(rows, sorting) {
 
 export function sortLabel(sorting) {
   const names = {
-    when: 'дата',
-    title: 'название',
-    description: 'описание',
-    sport: 'тип',
-    duration: 'длительность',
-    distance: 'дистанция',
-    parsed: 'разбор',
+    when: 'date',
+    title: 'title',
+    description: 'description',
+    sport: 'type',
+    duration: 'duration',
+    distance: 'distance',
+    parsed: 'parsed',
   };
   return sorting
     .map((item, index) => {
       const name = names[item.id] || item.id;
-      const direction = item.desc ? 'по убыванию' : 'по возрастанию';
+      const direction = item.desc ? 'descending' : 'ascending';
       return sorting.length > 1 ? `${index + 1}. ${name} ${direction}` : `${name} ${direction}`;
     })
     .join(', ');

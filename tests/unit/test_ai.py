@@ -347,6 +347,7 @@ class PromptTest(unittest.TestCase):
         self.assertIn("A null field was not measured", SYSTEM_PROMPT)
 
     def test_the_prompt_forbids_diagnosis_and_garmin_payloads(self) -> None:
+        self.assertIn("British English", SYSTEM_PROMPT)
         self.assertIn("Do not diagnose", SYSTEM_PROMPT)
         self.assertIn("Never describe Garmin API fields", SYSTEM_PROMPT)
 

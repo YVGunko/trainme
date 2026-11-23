@@ -161,7 +161,7 @@ export function DayCard({ onSaved }) {
               <IconButton
                 icon="download"
                 variant="secondary"
-                label={importing ? 'Загрузка дня' : 'Load'}
+                label={importing ? 'Loading day' : 'Load'}
                 busy={importing}
                 onClick={loadGarminDay}
               />

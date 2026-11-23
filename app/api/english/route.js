@@ -16,10 +16,10 @@ export async function POST(request) {
     return Response.json({ ok: true, result });
   } catch (error) {
     if (error?.message === 'unauthorized') {
-      return Response.json({ ok: false, error: 'Нужно войти' }, { status: 401 });
+      return Response.json({ ok: false, error: 'Need to sign in' }, { status: 401 });
     }
-    const failure = renderFailure(error, 'Проверка не удалась. Подождите и повторите');
-    const message = failure.status === 503 ? 'Проверка английского не настроена' : failure.error;
+    const failure = renderFailure(error, 'The check failed. Wait and try again');
+    const message = failure.status === 503 ? 'The English check is not configured' : failure.error;
     return Response.json({ ok: false, error: message }, { status: failure.status });
   }
 }

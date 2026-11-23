@@ -5,12 +5,12 @@
 // service ran and failed, so waiting fixes nothing and the cause has to be
 // shown. Collapsing both into "wait a minute" hides a real bug.
 const MESSAGES = {
-  400: () => 'Проверьте введённые данные',
-  401: () => 'Сервис не принял секрет',
+  400: () => 'Check the values you entered',
+  401: () => 'The service rejected the secret',
   404: () =>
-    'Сервис ещё не обновился после последнего деплоя: такого метода в нём пока нет. Подождите несколько минут и повторите',
-  429: () => 'Garmin ограничил запросы. Подождите и повторите',
-  503: () => 'Сервис не настроен: нет доступа к базе или к Garmin',
+    'The service has not updated after the last deploy: that method is not there yet. Wait a few minutes and try again',
+  429: () => 'Garmin limited the requests. Wait and try again',
+  503: () => 'The service is not configured: no access to the database or to Garmin',
 };
 
 export function renderFailure(error, fallback) {
@@ -19,14 +19,14 @@ export function renderFailure(error, fallback) {
 
   if (status === 502 && detail) {
     // Carry the failure name through: it is the only clue without server logs.
-    return { status: 502, error: `Сервис ответил ошибкой: ${detail}` };
+    return { status: 502, error: `The service answered with an error: ${detail}` };
   }
   const sentence = MESSAGES[status];
   if (sentence) {
     return { status: status === 404 ? 502 : status, error: sentence() };
   }
   if (status === 0) {
-    return { status: 502, error: 'Сервис не ответил. Проверьте, что он запущен' };
+    return { status: 502, error: 'The service did not answer. Check that it is running' };
   }
   return { status: 502, error: fallback };
 }

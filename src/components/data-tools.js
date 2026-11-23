@@ -37,23 +37,23 @@ export function DataTools() {
       });
       const data = await response.json();
       if (!response.ok || !data.ok) {
-        setError(data.error || 'Загрузка не удалась');
+        setError(data.error || 'Download failed');
         return;
       }
       const result = data.result || {};
       const queued = Array.isArray(data.queue?.queued) ? data.queue.queued.length : 0;
       const failed = Array.isArray(data.queue?.failed) ? data.queue.failed.length : 0;
       const parseNote = [
-        queued ? `Разбор поставлен в очередь: ${queued}.` : '',
-        failed ? `Не удалось поставить в очередь: ${failed}.` : '',
+        queued ? `Parsing queued: ${queued}.` : '',
+        failed ? `Could not queue: ${failed}.` : '',
       ]
         .filter(Boolean)
         .join(' ');
       setMessage(
-        `За период ${result.start} — ${result.end}: новых файлов ${result.downloaded_activity_count ?? 0} из ${result.activity_count ?? 0}. Дней скачано ${result.downloaded_day_count ?? 0}. ${parseNote}`.trim()
+        `For ${result.start} – ${result.end}: ${result.downloaded_activity_count ?? 0} new files of ${result.activity_count ?? 0}. Days downloaded: ${result.downloaded_day_count ?? 0}. ${parseNote}`.trim()
       );
     } catch {
-      setError('Загрузка не удалась');
+      setError('Download failed');
     } finally {
       setLoadingPeriod(false);
     }
@@ -72,13 +72,13 @@ export function DataTools() {
       });
       const data = await response.json();
       if (!response.ok || !data.ok) {
-        setError(data.error || 'Проверка Garmin не удалась');
+        setError(data.error || 'The Garmin check failed');
         return;
       }
       saveReport(probeDate, data.result);
-      setMessage(`Файл probe-unused-${probeDate}.json сохранён в загрузки браузера.`);
+      setMessage(`probe-unused-${probeDate}.json was saved to the browser downloads.`);
     } catch {
-      setError('Проверка Garmin не удалась');
+      setError('The Garmin check failed');
     } finally {
       setProbing(false);
     }
@@ -97,15 +97,15 @@ export function DataTools() {
       });
       const data = await response.json();
       if (!response.ok || !data.ok) {
-        setError(data.error || 'История не загружена');
+        setError(data.error || 'History was not loaded');
         return;
       }
       const result = data.result || {};
       setMessage(
-        `История за ${result.start} — ${result.end}: сохранено ${result.stored_count ?? 0} тренировок из ${result.activity_count ?? 0}. Всего в базе ${result.history_total ?? 0}.`,
+        `History for ${result.start} – ${result.end}: stored ${result.stored_count ?? 0} activities of ${result.activity_count ?? 0}. ${result.history_total ?? 0} in the database.`,
       );
     } catch {
-      setError('История не загружена');
+      setError('History was not loaded');
     } finally {
       setImporting(false);
     }
@@ -120,13 +120,13 @@ export function DataTools() {
       const response = await fetch('/api/context');
       const data = await response.json();
       if (!response.ok || !data.ok) {
-        setError(data.error || 'Контекст не собран');
+        setError(data.error || 'The context was not built');
         return;
       }
       setContext(data.result?.context || null);
       setCoverage(data.result?.coverage || null);
     } catch {
-      setError('Контекст не собран');
+      setError('The context was not built');
     } finally {
       setPreviewing(false);
     }
@@ -136,7 +136,7 @@ export function DataTools() {
     <section className="data-tools">
       <form className="toolbar" onSubmit={probeGarmin}>
         <label>
-          День отчёта
+          Report day
           <input
             type="date"
             value={probeDate}
@@ -147,23 +147,23 @@ export function DataTools() {
         <IconButton
           type="submit"
           icon="download"
-          label={probing ? 'Запрос отчёта Garmin' : 'Снять отчёт Garmin'}
+          label={probing ? 'Requesting Garmin report' : 'Download Garmin report'}
           busy={probing}
         />
       </form>
       <form className="toolbar" onSubmit={loadPeriod}>
         <label>
-          С
+          From
           <input type="date" value={start} onChange={(event) => setStart(event.target.value)} required />
         </label>
         <label>
-          По
+          To
           <input type="date" value={end} onChange={(event) => setEnd(event.target.value)} required />
         </label>
         <IconButton
           type="submit"
           icon="download"
-          label={loadingPeriod ? 'Загрузка периода' : 'Загрузить'}
+          label={loadingPeriod ? 'Loading period' : 'Download'}
           busy={loadingPeriod}
         />
       </form>
@@ -171,30 +171,30 @@ export function DataTools() {
         <IconButton
           icon="download"
           variant="secondary"
-          label={importing ? 'Загрузка истории' : 'Загрузить историю за год'}
+          label={importing ? 'Loading history' : 'Load a year of history'}
           busy={importing}
           onClick={importYear}
         />
         <IconButton
           icon="eye"
           variant="secondary"
-          label={previewing ? 'Сбор контекста' : 'Показать контекст тренера'}
+          label={previewing ? 'Building context' : 'Show the coach context'}
           busy={previewing}
           onClick={previewContext}
         />
       </div>
       {coverage ? (
         <p className="muted">
-          Сырых тренировок: {coverage.raw_activity_count} (последние {coverage.raw_window_days} дней).
-          Недель в сводке: {coverage.week_count}
-          {coverage.weeks_first ? `, ${coverage.weeks_first} — ${coverage.weeks_last}` : ''}.
-          Детальных дней: {coverage.detail_day_count}. Дней wellness: {coverage.wellness_day_count}.
-          Профиль: {coverage.profile_has_notes ? 'заполнен' : 'пуст'}.
+          Raw activities: {coverage.raw_activity_count} (last {coverage.raw_window_days} days).
+          Weeks in the summary: {coverage.week_count}
+          {coverage.weeks_first ? `, ${coverage.weeks_first} – ${coverage.weeks_last}` : ''}.
+          Detailed days: {coverage.detail_day_count}. Wellness days: {coverage.wellness_day_count}.
+          Profile: {coverage.profile_has_notes ? 'filled in' : 'empty'}.
         </p>
       ) : null}
       {context ? (
         <details>
-          <summary>Контекст, который получит модель</summary>
+          <summary>Context the model will receive</summary>
           <pre className="context-preview">{JSON.stringify(context, null, 2)}</pre>
         </details>
       ) : null}

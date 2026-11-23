@@ -11,13 +11,13 @@ export async function POST(request) {
     const body = await request.json().catch(() => null);
     const date = typeof body?.date === 'string' ? body.date : '';
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
-      return Response.json({ ok: false, error: 'Нужна дата в формате ГГГГ-ММ-ДД' }, { status: 400 });
+      return Response.json({ ok: false, error: 'Need a date as YYYY-MM-DD' }, { status: 400 });
     }
     const result = await callRender('/workouts/strength-test', { date });
     return Response.json({ ok: true, result });
   } catch (error) {
     if (error?.message === 'unauthorized') {
-      return Response.json({ ok: false, error: 'Нужно войти' }, { status: 401 });
+      return Response.json({ ok: false, error: 'Need to sign in' }, { status: 401 });
     }
     const status = error?.status || 500;
     const httpStatus = status === 400 || status === 503 ? status : status === 429 ? 429 : 502;
@@ -27,10 +27,10 @@ export async function POST(request) {
 
 function renderMessage(status, detail) {
   const uploaded = typeof detail === 'string' ? detail.match(/Workout (\d+) was uploaded/) : null;
-  if (uploaded) return `Шаблон ${uploaded[1]} загружен в библиотеку, но не поставлен на дату`;
-  if (status === 400) return 'Нужна дата в формате ГГГГ-ММ-ДД';
-  if (status === 401) return 'Сервис отправки не принял секрет';
-  if (status === 429) return 'Garmin ограничил запросы. Подождите и повторите';
-  if (status === 503) return 'Сервис отправки не настроен';
-  return 'Отправка тренировки не удалась. Подождите минуту и повторите';
+  if (uploaded) return `Workout ${uploaded[1]} is in the library but was not scheduled`;
+  if (status === 400) return 'Need a date as YYYY-MM-DD';
+  if (status === 401) return 'The sending service rejected the secret';
+  if (status === 429) return 'Garmin limited the requests. Wait and try again';
+  if (status === 503) return 'The sending service is not configured';
+  return 'Sending the workout failed. Wait a minute and try again';
 }

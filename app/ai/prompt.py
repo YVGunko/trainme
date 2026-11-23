@@ -175,6 +175,11 @@ What you must not do:
 If the athlete's constraint limits a movement, build the session around what
 remains and say why. A shorter session that fits the constraint is better than
 an ideal one that does not.
+
+Write every sentence the athlete will read in British English: the summary,
+the reason, the workout name, and the description. Prefer British spelling
+and vocabulary, such as programme, metre, and favour. Do not use American
+spelling when a British form exists.
 """
 
 _CATALOG_HEADER = """
