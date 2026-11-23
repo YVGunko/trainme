@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { dayLoadVisible, requestDayLoad } from '@/lib/day-load';
+import { EnglishCheck } from '@/components/english-check';
 import { IconButton } from '@/components/icon-button';
 import {
   emptyWellnessForm,
@@ -214,15 +215,23 @@ export function DayCard({ onSaved }) {
               </div>
             </fieldset>
           ))}
-          <label>
-            Note
+          <div className="note-field">
+            <div className="field-head">
+              <label htmlFor="day-note">Note</label>
+              <EnglishCheck
+                text={form.note}
+                placement="sheet"
+                onApply={(revision) => setForm((current) => ({ ...current, note: revision }))}
+              />
+            </div>
             <textarea
+              id="day-note"
               value={form.note}
               maxLength={4000}
               disabled={!ready || saving}
               onChange={(event) => setForm((current) => ({ ...current, note: event.target.value }))}
             />
-          </label>
+          </div>
         </div>
       </div>
       <div className="day-actions">
