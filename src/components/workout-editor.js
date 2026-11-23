@@ -168,22 +168,20 @@ export function WorkoutEditor({ activityId, onClose, onSaved }) {
             Title
             <input value={title} onChange={(event) => setTitle(event.target.value)} maxLength={200} />
           </label>
-          <div className="note-field">
-            <div className="field-head">
-              <label htmlFor="workout-description">Description</label>
-              <EnglishCheck
-                text={description}
-                placement="inline"
-                onApply={setDescription}
-              />
-            </div>
+          <EnglishCheck
+            text={description}
+            placement="inline"
+            label="Description"
+            fieldId="workout-description"
+            onApply={setDescription}
+          >
             <textarea
               id="workout-description"
               value={description}
               maxLength={4000}
               onChange={(event) => setDescription(event.target.value)}
             />
-          </div>
+          </EnglishCheck>
           <div>
             <h3>Garmin</h3>
             {!record.parsed ? <p>Garmin details appear after Parse.</p> : null}

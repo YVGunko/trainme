@@ -215,15 +215,13 @@ export function DayCard({ onSaved }) {
               </div>
             </fieldset>
           ))}
-          <div className="note-field">
-            <div className="field-head">
-              <label htmlFor="day-note">Note</label>
-              <EnglishCheck
-                text={form.note}
-                placement="sheet"
-                onApply={(revision) => setForm((current) => ({ ...current, note: revision }))}
-              />
-            </div>
+          <EnglishCheck
+            text={form.note}
+            placement="sheet"
+            label="Note"
+            fieldId="day-note"
+            onApply={(revision) => setForm((current) => ({ ...current, note: revision }))}
+          >
             <textarea
               id="day-note"
               value={form.note}
@@ -231,7 +229,7 @@ export function DayCard({ onSaved }) {
               disabled={!ready || saving}
               onChange={(event) => setForm((current) => ({ ...current, note: event.target.value }))}
             />
-          </div>
+          </EnglishCheck>
         </div>
       </div>
       <div className="day-actions">
