@@ -8,6 +8,9 @@ const ICONS = {
   eye: 'M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6-10-6-10-6z M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z',
   search: 'M11 18a7 7 0 1 0 0-14 7 7 0 0 0 0 14z M16.5 16.5 L20 20',
   parse: 'M7 5h7l3 3v11H7V5z M14 5v4h4 M9 12h6 M9 16h4',
+  spell: 'M4 7h8 M4 11h6 M4 15h4 M13 16.5l2.2 2.2 5.3-6.2',
+  check: 'M5 12.5l4.5 4.5L19 7.5',
+  close: 'M7 7l10 10 M17 7L7 17',
 };
 
 export function IconButton({

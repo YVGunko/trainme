@@ -461,12 +461,6 @@ tr.is-selected td {
   gap: 6px;
 }
 
-.english-ask {
-  min-height: 36px;
-  padding: 6px 12px;
-  font-size: 0.85rem;
-}
-
 .english-layer {
   position: fixed;
   inset: 0;

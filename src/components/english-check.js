@@ -1,8 +1,9 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { IconButton } from '@/components/icon-button';
 
-export function EnglishCheck({ text, onApply, placement = 'sheet' }) {
+export function EnglishCheck({ text, onApply, placement = 'sheet', label, fieldId, children }) {
   const [pending, setPending] = useState(false);
   const [error, setError] = useState('');
   const [result, setResult] = useState(null);
@@ -51,29 +52,36 @@ export function EnglishCheck({ text, onApply, placement = 'sheet' }) {
   function apply() {
     if (!result?.revision) return;
     onApply(result.revision);
+    close();
   }
 
+  const review = result ? <Review result={result} onApply={apply} onClose={close} /> : null;
+
   return (
-    <>
-      <button type="button" className="secondary english-ask" onClick={check} disabled={empty || pending}>
-        {pending ? 'Проверка...' : 'Проверить английский'}
-      </button>
+    <div className="note-field">
+      <div className="field-head">
+        <label htmlFor={fieldId}>{label}</label>
+        <IconButton
+          icon="spell"
+          variant="secondary"
+          label={pending ? 'Проверка...' : 'Проверить английский'}
+          busy={pending}
+          disabled={empty}
+          onClick={check}
+        />
+      </div>
+      {children}
       {error ? <p className="error">{error}</p> : null}
-      {result ? (
-        placement === 'sheet' ? (
-          <div className="english-layer">
-            <button type="button" className="english-backdrop" aria-label="Закрыть" onClick={close} />
-            <section className="english-sheet" role="dialog" aria-label="Проверка английского">
-              <Review result={result} onApply={apply} onClose={close} />
-            </section>
-          </div>
-        ) : (
-          <div className="english-inline">
-            <Review result={result} onApply={apply} onClose={close} />
-          </div>
-        )
+      {placement === 'sheet' && result ? (
+        <div className="english-layer">
+          <button type="button" className="english-backdrop" aria-label="Закрыть" onClick={close} />
+          <section className="english-sheet" role="dialog" aria-label="Проверка английского">
+            {review}
+          </section>
+        </div>
       ) : null}
-    </>
+      {placement === 'inline' && result ? <div className="english-inline">{review}</div> : null}
+    </div>
   );
 }
 
@@ -82,9 +90,10 @@ function Review({ result, onApply, onClose }) {
     <>
       <div className="section-head">
         <h3>Проверка английского</h3>
-        <button type="button" className="secondary english-ask" onClick={onClose}>
-          Закрыть
-        </button>
+        <div className="icon-row">
+          <IconButton icon="check" label="Подставить в поле" onClick={onApply} />
+          <IconButton icon="close" variant="secondary" label="Закрыть" onClick={onClose} />
+        </div>
       </div>
       <div>
         <h4>Ваш текст</h4>
@@ -104,9 +113,6 @@ function Review({ result, onApply, onClose }) {
           ))}
         </ul>
       </div>
-      <button type="button" onClick={onApply}>
-        Подставить в поле
-      </button>
     </>
   );
 }
