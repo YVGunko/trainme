@@ -28,6 +28,7 @@ from app.garmin.probe import probe_unused
 from app.garmin.history import HistoryPeriodError, import_history
 from app.profile import ProfileError
 from app.athlete import read_profile, write_profile
+from app.ai.english import EnglishError, review_english
 from app.ai.recommend import RecommendationError, recommend
 from app.coach_context import build_context, coverage
 from app.garmin.workout import (
@@ -426,6 +427,26 @@ def read_days(
         logger.warning("Day read failed: %s", type(error).__name__)
         raise HTTPException(status_code=502, detail="Day read failed")
     return {"days": rows}
+
+
+@app.post("/english")
+def check_english(
+    body: dict | None = Body(default=None),
+    authorization: str | None = Header(default=None),
+) -> dict:
+    """Check one note's English. Nothing is stored."""
+    _require_service_secret(authorization)
+    text = body.get("text") if isinstance(body, dict) else None
+    try:
+        return review_english(text)
+    except EnglishError as error:
+        if error.reason in {"empty", "bad_text", "too_long"}:
+            raise HTTPException(status_code=400, detail=str(error)) from error
+        if error.reason == "not_configured":
+            raise HTTPException(status_code=503, detail="English check is not configured") from error
+        if error.reason == "rate_limited":
+            raise HTTPException(status_code=429, detail="The model is rate limited") from error
+        raise HTTPException(status_code=502, detail="English check failed") from error
 
 
 @app.post("/recommend")

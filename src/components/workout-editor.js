@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { describeActivity } from '@/lib/activity-record';
 import { Drawer } from '@/components/drawer';
+import { EnglishCheck } from '@/components/english-check';
 import { IconButton } from '@/components/icon-button';
 
 export function WorkoutEditor({ activityId, onClose, onSaved }) {
@@ -167,14 +168,22 @@ export function WorkoutEditor({ activityId, onClose, onSaved }) {
             Title
             <input value={title} onChange={(event) => setTitle(event.target.value)} maxLength={200} />
           </label>
-          <label>
-            Description
+          <div className="note-field">
+            <div className="field-head">
+              <label htmlFor="workout-description">Description</label>
+              <EnglishCheck
+                text={description}
+                placement="inline"
+                onApply={setDescription}
+              />
+            </div>
             <textarea
+              id="workout-description"
               value={description}
               maxLength={4000}
               onChange={(event) => setDescription(event.target.value)}
             />
-          </label>
+          </div>
           <div>
             <h3>Garmin</h3>
             {!record.parsed ? <p>Garmin details appear after Parse.</p> : null}
