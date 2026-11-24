@@ -303,5 +303,7 @@ model subjective_log {
   injury        Int?     @db.SmallInt
   illness       Int?     @db.SmallInt
   note          String?
+  evening_note  String?
+  coach_request String?
   updated_at    DateTime @default(now()) @updatedAt @db.Timestamptz(6)
 }

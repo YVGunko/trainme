@@ -105,8 +105,15 @@ A session may carry the athlete's own verdict:
   and when it does, believe the athlete.
 - feel is one of 0, 25, 50, 75, 100, from very weak to very strong.
 - note is what they wrote about that session.
-A wellness row may carry a note as well: free text about how the day felt, and
-often the only place a specific problem is named.
+A wellness row may carry a note as well: free text about how the morning felt,
+and often the only place a specific problem is named.
+wellness.evening_note is written later the same day. It is fresher than the
+morning scores and the morning note. When they disagree, believe the evening note.
+wellness.coach_request is an instruction for the plan being built now. The
+latest non-empty coach_request is the one in force. Earlier requests are
+history and do not keep directing the plan. A request may change the shape of
+the week, such as strength at home instead of a gym. It must not break a
+standing limit in profile.notes, and it must not add an avoided sport.
 
 How to read the data:
 - existing_plan, when present, is the plan already in force for the coming
@@ -134,6 +141,8 @@ How to read the data:
 - weekly_totals are older weeks, one row per week, oldest first. Use them for
   the trend.
 - wellness rows are the athlete's own 1-4 scores, where 1 is best and 4 is worst.
+  note is the morning text. evening_note is the later text. coach_request is
+  the instruction described above. A null text was not written.
 
 Sport names:
 - Every "sport" field already uses one of these five: running, cycling,

@@ -93,21 +93,27 @@ export function parseWellness(body) {
   for (const field of SCORE_FIELDS) {
     row[field] = parseScore(field, body[field]);
   }
-  row.note = parseNote(body.note);
+  row.note = parseNote(body.note, 'Note');
+  row.evening_note = parseNote(body.evening_note, 'Evening note');
+  row.coach_request = parseNote(body.coach_request, 'Request');
   return row;
 }
 
+const DAY_TEXTS = ['note', 'evening_note', 'coach_request'];
+
 export function isBlankWellness(row) {
-  return SCORE_FIELDS.every((field) => row[field] == null) && row.note == null;
+  return SCORE_FIELDS.every((field) => row[field] == null) && DAY_TEXTS.every((field) => row[field] == null);
 }
 
+// The morning check-in is the scores and the morning note. An evening line or
+// a request does not stand in for that morning card.
 export function dayNeedsCheckIn(wellness) {
   if (wellness == null) return true;
-  return isBlankWellness(wellness);
+  return SCORE_FIELDS.every((field) => wellness[field] == null) && wellness.note == null;
 }
 
 export function emptyWellnessForm() {
-  const form = { note: '' };
+  const form = { note: '', evening_note: '', coach_request: '' };
   for (const field of SCORE_FIELDS) form[field] = null;
   return form;
 }
@@ -119,6 +125,8 @@ export function formFromWellness(row) {
     form[field] = row[field] == null ? null : row[field];
   }
   form.note = row.note || '';
+  form.evening_note = row.evening_note || '';
+  form.coach_request = row.coach_request || '';
   return form;
 }
 
@@ -177,8 +185,14 @@ export function presentWellness(row) {
     const number = value == null ? null : Number(value);
     present[field] = Number.isInteger(number) && number >= 1 && number <= 4 ? number : null;
   }
-  present.note = typeof row?.note === 'string' && row.note ? row.note : null;
+  present.note = textOrNull(row?.note);
+  present.evening_note = textOrNull(row?.evening_note);
+  present.coach_request = textOrNull(row?.coach_request);
   return present;
+}
+
+function textOrNull(value) {
+  return typeof value === 'string' && value ? value : null;
 }
 
 function coerceGarmin(field, value) {
@@ -200,12 +214,12 @@ function parseScore(field, value) {
   return value;
 }
 
-function parseNote(value) {
+function parseNote(value, name) {
   if (value == null) return null;
-  if (typeof value !== 'string') invalid('Note must be text.');
+  if (typeof value !== 'string') invalid(`${name} must be text.`);
   const text = value.trim();
   if (!text) return null;
-  if (text.length > NOTE_LIMIT) invalid('Note is too long.');
+  if (text.length > NOTE_LIMIT) invalid(`${name} is too long.`);
   return text;
 }
 

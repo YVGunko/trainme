@@ -1,10 +1,13 @@
-import { CREATE_SUBJECTIVE_LOG } from '@/lib/subjective-log-sql';
+import { CREATE_SUBJECTIVE_LOG, EXTEND_SUBJECTIVE_LOG } from '@/lib/subjective-log-sql';
 import { isBlankWellness, presentGarmin, presentWellness } from '@/lib/wellness';
 import { getPrisma } from '@/server/db';
 
 export async function ensureSubjectiveLog() {
   const prisma = getPrisma();
   await prisma.$executeRawUnsafe(CREATE_SUBJECTIVE_LOG);
+  for (const statement of EXTEND_SUBJECTIVE_LOG) {
+    await prisma.$executeRawUnsafe(statement);
+  }
   return prisma;
 }
 
@@ -32,7 +35,8 @@ export async function readDay(date) {
     WHERE date = CAST(${date} AS date)
   `;
   const wellnessRows = await prisma.$queryRaw`
-    SELECT fatigue, soreness, mood, motivation, stress, sleep_quality, injury, illness, note
+    SELECT fatigue, soreness, mood, motivation, stress, sleep_quality, injury, illness,
+           note, evening_note, coach_request
     FROM subjective_log
     WHERE date = CAST(${date} AS date)
   `;
@@ -64,6 +68,8 @@ export async function saveWellness(date, row) {
       injury,
       illness,
       note,
+      evening_note,
+      coach_request,
       updated_at
     )
     VALUES (
@@ -77,6 +83,8 @@ export async function saveWellness(date, row) {
       ${row.injury},
       ${row.illness},
       ${row.note},
+      ${row.evening_note},
+      ${row.coach_request},
       now()
     )
     ON CONFLICT (date) DO UPDATE
@@ -89,6 +97,8 @@ export async function saveWellness(date, row) {
         injury = EXCLUDED.injury,
         illness = EXCLUDED.illness,
         note = EXCLUDED.note,
+        evening_note = EXCLUDED.evening_note,
+        coach_request = EXCLUDED.coach_request,
         updated_at = now()
   `;
   return readDay(date);

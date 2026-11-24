@@ -218,7 +218,7 @@ export function DayCard({ onSaved }) {
           <EnglishCheck
             text={form.note}
             placement="sheet"
-            label="Note"
+            label="Morning note"
             fieldId="day-note"
             onApply={(revision) => setForm((current) => ({ ...current, note: revision }))}
           >
@@ -228,6 +228,38 @@ export function DayCard({ onSaved }) {
               maxLength={4000}
               disabled={!ready || saving}
               onChange={(event) => setForm((current) => ({ ...current, note: event.target.value }))}
+            />
+          </EnglishCheck>
+          <EnglishCheck
+            text={form.evening_note}
+            placement="sheet"
+            label="Evening note"
+            fieldId="evening-note"
+            onApply={(revision) => setForm((current) => ({ ...current, evening_note: revision }))}
+          >
+            <textarea
+              id="evening-note"
+              value={form.evening_note}
+              maxLength={4000}
+              disabled={!ready || saving}
+              placeholder="What happened later in the day."
+              onChange={(event) => setForm((current) => ({ ...current, evening_note: event.target.value }))}
+            />
+          </EnglishCheck>
+          <EnglishCheck
+            text={form.coach_request}
+            placement="sheet"
+            label="Request for the coach"
+            fieldId="coach-request"
+            onApply={(revision) => setForm((current) => ({ ...current, coach_request: revision }))}
+          >
+            <textarea
+              id="coach-request"
+              value={form.coach_request}
+              maxLength={4000}
+              disabled={!ready || saving}
+              placeholder="What the next plan should change."
+              onChange={(event) => setForm((current) => ({ ...current, coach_request: event.target.value }))}
             />
           </EnglishCheck>
         </div>

@@ -910,7 +910,7 @@ def load_subjective_days(
         """
         SELECT to_char(date, 'YYYY-MM-DD'),
                fatigue, soreness, mood, motivation, stress, sleep_quality, injury, illness,
-               note
+               note, evening_note, coach_request
         FROM subjective_log
         WHERE date >= %s::date AND date <= %s::date
         ORDER BY date ASC
@@ -918,7 +918,16 @@ def load_subjective_days(
         (start, end),
     ).fetchall()
     keys = ("fatigue", "soreness", "mood", "motivation", "stress", "sleep_quality", "injury", "illness")
-    return [{"date": row[0], **dict(zip(keys, row[1:9])), "note": row[9]} for row in rows]
+    return [
+        {
+            "date": row[0],
+            **dict(zip(keys, row[1:9])),
+            "note": row[9],
+            "evening_note": row[10],
+            "coach_request": row[11],
+        }
+        for row in rows
+    ]
 
 
 def _raw_row(row: tuple) -> dict[str, Any]:
