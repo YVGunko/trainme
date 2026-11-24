@@ -260,16 +260,20 @@ class NoteTravelsToTheCoachTest(unittest.TestCase):
         sql = " ".join(connection.execute.call_args.args[0].split()).lower()
         select_part = sql.split("from subjective_log")[0]
         self.assertIn("note", select_part)
+        self.assertIn("evening_note", select_part)
+        self.assertIn("coach_request", select_part)
 
     def test_a_stored_note_arrives_with_its_day(self) -> None:
         from app.storage.db import load_subjective_days
 
         connection = MagicMock()
         connection.execute.return_value.fetchall.return_value = [
-            ("2026-11-18", 1, 2, 3, 4, 1, 2, 3, 4, "колено ноет после бега"),
+            ("2026-11-18", 1, 2, 3, 4, 1, 2, 3, 4, "колено ноет после бега", "вечером лучше", "силовая дома"),
         ]
         rows = load_subjective_days(connection, "2026-11-18", "2026-11-18")
         self.assertEqual(rows[0]["note"], "колено ноет после бега")
+        self.assertEqual(rows[0]["evening_note"], "вечером лучше")
+        self.assertEqual(rows[0]["coach_request"], "силовая дома")
         self.assertEqual(rows[0]["injury"], 3)
 
     def test_a_session_note_and_rating_travel_with_the_session(self) -> None:

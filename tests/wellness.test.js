@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
-import { CREATE_SUBJECTIVE_LOG } from '../src/lib/subjective-log-sql.js';
+import { CREATE_SUBJECTIVE_LOG, EXTEND_SUBJECTIVE_LOG } from '../src/lib/subjective-log-sql.js';
 import {
   formatMetricNumber,
   formatSleep,
@@ -60,6 +60,8 @@ test('wellness scores are empty or integers 1 through 4', () => {
   assert.equal(row.mood, null);
   assert.equal(row.motivation, 4);
   assert.equal(row.note, 'rest day');
+  assert.equal(row.evening_note, null);
+  assert.equal(row.coach_request, null);
   assert.equal('pain' in row, false);
   assert.equal('rpe' in row, false);
   assert.equal(isBlankWellness(row), false);
@@ -68,12 +70,19 @@ test('wellness scores are empty or integers 1 through 4', () => {
     assert.throws(() => parseWellness({ fatigue: value }), /Fatigue must be 1, 2, 3, or 4/);
   }
   assert.throws(() => parseWellness({ note: 12 }), /Note must be text/);
+  assert.throws(() => parseWellness({ evening_note: 12 }), /Evening note must be text/);
   assert.throws(() => parseWellness({ note: 'x'.repeat(4001) }), /Note is too long/);
+  assert.throws(() => parseWellness({ coach_request: 'x'.repeat(4001) }), /Request is too long/);
   assert.equal(parseWellness({ note: 'x'.repeat(4000) }).note.length, 4000);
   assert.equal(parseWellness({ note: '   ' }).note, null);
+  assert.equal(parseWellness({ evening_note: '  knee eased  ' }).evening_note, 'knee eased');
+  assert.equal(parseWellness({ coach_request: '  strength at home  ' }).coach_request, 'strength at home');
   assert.equal(isBlankWellness(parseWellness({})), true);
+  assert.equal(isBlankWellness(parseWellness({ evening_note: 'later' })), false);
   assert.equal(dayNeedsCheckIn(null), true);
   assert.equal(dayNeedsCheckIn(parseWellness({})), true);
+  assert.equal(dayNeedsCheckIn(parseWellness({ evening_note: 'later' })), true);
+  assert.equal(dayNeedsCheckIn(parseWellness({ coach_request: 'home strength' })), true);
   assert.equal(dayNeedsCheckIn(parseWellness({ fatigue: 1 })), false);
   assert.throws(() => parseWellness(['fatigue']), /Could not save/);
 });
@@ -112,6 +121,8 @@ test('sleep is shown in hours and minutes and empty garmin fields stay hidden', 
     injury: null,
     illness: null,
     note: null,
+    evening_note: null,
+    coach_request: null,
   });
   assert.equal(SCORE_FIELDS.length, 8);
 });
@@ -147,4 +158,12 @@ test('the wellness table migration matches the statement the app runs', () => {
   );
   assert.equal(file.trim(), CREATE_SUBJECTIVE_LOG.trim());
   assert.equal(file.includes('daily_metrics'), false);
+});
+
+test('the evening and request columns are the same statements the day save runs', () => {
+  const file = readFileSync(
+    new URL('../prisma/migrations/20261124120000_day_evening_and_request/migration.sql', import.meta.url),
+    'utf8'
+  );
+  assert.equal(file, `${EXTEND_SUBJECTIVE_LOG.map((statement) => `${statement};`).join('\n')}\n`);
 });
