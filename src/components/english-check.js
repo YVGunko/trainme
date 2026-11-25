@@ -49,9 +49,10 @@ export function EnglishCheck({ text, onApply, placement = 'sheet', label, fieldI
     setError('');
   }
 
-  function apply() {
-    if (!result?.revision) return;
-    onApply(result.revision);
+  function apply(next) {
+    const value = typeof next === 'string' ? next : result?.revision;
+    if (!value) return;
+    onApply(value);
     close();
   }
 
@@ -85,6 +86,12 @@ export function EnglishCheck({ text, onApply, placement = 'sheet', label, fieldI
   );
 }
 
+function toneLabel(tone) {
+  const names = { casual: 'Casual', polite: 'Polite', british: 'British', american: 'American' };
+  const key = String(tone || '').toLowerCase();
+  return names[key] || key;
+}
+
 function Review({ result, onApply, onClose }) {
   return (
     <>
@@ -99,20 +106,41 @@ function Review({ result, onApply, onClose }) {
         <h4>Your text</h4>
         <p>{result.source || ''}</p>
       </div>
+      {result.verdict ? (
+        <div>
+          <h4>Does it sound right</h4>
+          <p>{result.verdict}</p>
+        </div>
+      ) : null}
       <div>
-        <h4>Clearer version</h4>
+        <h4>British version</h4>
         <p>{result.revision}</p>
       </div>
       <div>
-        <h4>What to notice</h4>
-        <ul className="english-tips">
-          {(result.tips || []).map((tip) => (
-            <li key={tip.aspect}>
-              <strong>{tip.aspect}.</strong> {tip.note}
+        <h4>Other ways to say it</h4>
+        <ul className="english-alts">
+          {(result.alternatives || []).map((item, index) => (
+            <li key={`${item.tone}-${index}`}>
+              <p>
+                <strong>{toneLabel(item.tone)}.</strong> {item.text}
+              </p>
+              <IconButton icon="check" label={`Apply ${toneLabel(item.tone)}`} onClick={() => onApply(item.text)} />
             </li>
           ))}
         </ul>
       </div>
+      {(result.tweaks || []).length > 0 ? (
+        <div>
+          <h4>Small tweaks</h4>
+          <ul className="english-tips">
+            {result.tweaks.map((tweak, index) => (
+              <li key={`${tweak.aspect}-${index}`}>
+                <strong>{tweak.aspect}.</strong> {tweak.note}
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
     </>
   );
 }

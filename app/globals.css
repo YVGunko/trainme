@@ -514,11 +514,30 @@ tr.is-selected td {
   margin: 0;
 }
 
-.english-tips {
+.english-tips,
+.english-alts {
   display: grid;
-  gap: 6px;
+  gap: 8px;
   margin: 0;
+}
+
+.english-tips {
   padding-left: 18px;
+}
+
+.english-alts {
+  padding: 0;
+  list-style: none;
+}
+
+.english-alts li {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.english-alts p {
+  margin: 0;
 }
 
 .section-head {
